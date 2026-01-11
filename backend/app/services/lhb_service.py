@@ -84,6 +84,16 @@ class LhbService:
                 print(f"[LhbService] 第一条数据: {items[0].stock_name} ({items[0].stock_code})")
             sys.stdout.flush()
             
+            # 为每个龙虎榜记录加载概念板块
+            from app.services.stock_concept_service import StockConceptService
+            for item in items:
+                concepts = StockConceptService.get_by_stock_name(db, item.stock_name)
+                setattr(item, '_concepts', concepts)
+                # 同时更新concept文本字段（兼容旧接口）
+                if concepts:
+                    concept_names = [c.name for c in concepts]
+                    setattr(item, 'concept', ','.join(concept_names))
+            
             return items, total
             
         except Exception as e:

@@ -20,9 +20,13 @@ router = APIRouter()
 def get_zt_pool_list(
     date: str = Query(..., description="日期，格式：YYYY-MM-DD"),
     stock_code: Optional[str] = Query(None, description="股票代码"),
-    concept: Optional[str] = Query(None, description="概念筛选"),
+    concept: Optional[str] = Query(None, description="概念筛选（文本字段，兼容旧接口）"),
     industry: Optional[str] = Query(None, description="行业筛选"),
     consecutive_limit_count: Optional[int] = Query(None, description="连板数筛选"),
+    limit_up_statistics: Optional[str] = Query(None, description="板数筛选（如：首板、1、2、2/3等）"),
+    concept_ids: Optional[str] = Query(None, description="概念板块ID列表（逗号分隔，如：1,2,3）"),
+    concept_names: Optional[str] = Query(None, description="概念板块名称列表（逗号分隔，如：人工智能,新能源）"),
+    is_lhb: Optional[bool] = Query(None, description="是否龙虎榜筛选，true表示只返回龙虎榜股票，false表示只返回非龙虎榜股票"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(settings.DEFAULT_PAGE_SIZE, ge=1, le=settings.MAX_PAGE_SIZE, description="每页数量"),
     sort_by: Optional[str] = Query(None, description="排序字段"),
@@ -35,6 +39,18 @@ def get_zt_pool_list(
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="日期格式错误")
     
+    # 解析概念板块参数
+    concept_ids_list = None
+    if concept_ids:
+        try:
+            concept_ids_list = [int(x.strip()) for x in concept_ids.split(',') if x.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="概念板块ID格式错误")
+    
+    concept_names_list = None
+    if concept_names:
+        concept_names_list = [x.strip() for x in concept_names.split(',') if x.strip()]
+    
     items, total = ZtPoolService.get_zt_pool_list(
         db=db,
         target_date=target_date,
@@ -42,6 +58,10 @@ def get_zt_pool_list(
         concept=concept,
         industry=industry,
         consecutive_limit_count=consecutive_limit_count,
+        limit_up_statistics=limit_up_statistics,
+        concept_ids=concept_ids_list,
+        concept_names=concept_names_list,
+        is_lhb=is_lhb,
         page=page,
         page_size=page_size,
         sort_by=sort_by,

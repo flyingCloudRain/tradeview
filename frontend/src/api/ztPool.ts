@@ -1,5 +1,11 @@
 import apiClient from './client'
 
+export interface StockConcept {
+  id: number
+  name: string
+  code?: string
+}
+
 export interface ZtPoolItem {
   id: number
   date: string
@@ -18,7 +24,8 @@ export interface ZtPoolItem {
   limit_up_statistics?: string
   consecutive_limit_count?: number
   industry?: string
-  concept?: string
+  concept?: string  // 保留用于兼容，优先使用 concepts
+  concepts?: StockConcept[]  // 概念板块数组
   limit_up_reason?: string
   is_lhb?: boolean  // 是否属于当日龙虎榜
 }
@@ -26,9 +33,13 @@ export interface ZtPoolItem {
 export interface ZtPoolListParams {
   date: string
   stock_code?: string
-  concept?: string
+  concept?: string  // 保留用于兼容旧接口
   industry?: string
   consecutive_limit_count?: number
+  limit_up_statistics?: string
+  concept_ids?: number[]  // 概念板块ID列表
+  concept_names?: string[]  // 概念板块名称列表
+  is_lhb?: boolean  // 是否龙虎榜筛选，true表示只返回龙虎榜股票，false表示只返回非龙虎榜股票
   page?: number
   page_size?: number
   sort_by?: string
@@ -69,6 +80,19 @@ export const ztPoolApi = {
     if (params.consecutive_limit_count !== undefined) {
       cleanParams.consecutive_limit_count = params.consecutive_limit_count
     }
+    if (params.limit_up_statistics) {
+      cleanParams.limit_up_statistics = params.limit_up_statistics
+    }
+    // 概念板块筛选参数
+    if (params.concept_ids && params.concept_ids.length > 0) {
+      cleanParams.concept_ids = params.concept_ids.join(',')
+    }
+    if (params.concept_names && params.concept_names.length > 0) {
+      cleanParams.concept_names = params.concept_names.join(',')
+    }
+    if (params.is_lhb !== undefined) {
+      cleanParams.is_lhb = params.is_lhb
+    }
     if (params.page) {
       cleanParams.page = params.page
     }
@@ -104,6 +128,13 @@ export const ztPoolApi = {
     if (params.concept) cleanParams.concept = params.concept
     if (params.industry) cleanParams.industry = params.industry
     if (params.consecutive_limit_count !== undefined) cleanParams.consecutive_limit_count = params.consecutive_limit_count
+    // 概念板块筛选参数（如果后端支持）
+    if (params.concept_ids && params.concept_ids.length > 0) {
+      cleanParams.concept_ids = params.concept_ids.join(',')
+    }
+    if (params.concept_names && params.concept_names.length > 0) {
+      cleanParams.concept_names = params.concept_names.join(',')
+    }
     if (params.page) cleanParams.page = params.page
     if (params.page_size) cleanParams.page_size = params.page_size
     if (params.sort_by) cleanParams.sort_by = params.sort_by

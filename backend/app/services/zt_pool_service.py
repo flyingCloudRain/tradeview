@@ -9,6 +9,7 @@ import pandas as pd
 
 from app.models.zt_pool import ZtPool, ZtPoolDown
 from app.models.lhb import LhbDetail
+from app.models.stock_concept import StockConceptMapping, StockConcept
 from app.utils.akshare_utils import safe_akshare_call
 from app.utils.format_utils import safe_float, safe_int
 import akshare as ak
@@ -25,6 +26,10 @@ class ZtPoolService:
         concept: Optional[str] = None,
         industry: Optional[str] = None,
         consecutive_limit_count: Optional[int] = None,
+        limit_up_statistics: Optional[str] = None,
+        concept_ids: Optional[List[int]] = None,
+        concept_names: Optional[List[str]] = None,
+        is_lhb: Optional[bool] = None,
         page: int = 1,
         page_size: int = 20,
         sort_by: Optional[str] = None,
@@ -32,12 +37,16 @@ class ZtPoolService:
     ) -> tuple[List[ZtPool], int]:
         """
         获取涨停池列表
+        
+        Args:
+            is_lhb: 是否龙虎榜筛选，True表示只返回龙虎榜股票，False表示只返回非龙虎榜股票，None表示不筛选
         """
         query = db.query(ZtPool).filter(ZtPool.date == target_date)
         
         if stock_code:
             query = query.filter(ZtPool.stock_code == stock_code)
         
+        # 兼容旧的概念筛选（文本字段）
         if concept:
             query = query.filter(ZtPool.concept.like(f"%{concept}%"))
         
@@ -46,6 +55,67 @@ class ZtPoolService:
         
         if consecutive_limit_count is not None:
             query = query.filter(ZtPool.consecutive_limit_count == consecutive_limit_count)
+        
+        # 板数筛选
+        if limit_up_statistics:
+            limit_up_statistics_trimmed = limit_up_statistics.strip()
+            # 如果输入是"首板"，筛选"1/1"
+            if limit_up_statistics_trimmed == "首板":
+                query = query.filter(ZtPool.limit_up_statistics == "1/1")
+            # 如果输入是纯数字（如"2"），筛选板数为该数字的记录（格式：*/2）
+            elif limit_up_statistics_trimmed.isdigit():
+                board_count = limit_up_statistics_trimmed
+                query = query.filter(ZtPool.limit_up_statistics.like(f"%/{board_count}"))
+            # 如果输入是完整格式（如"2/3"），精确匹配
+            elif "/" in limit_up_statistics_trimmed:
+                query = query.filter(ZtPool.limit_up_statistics == limit_up_statistics_trimmed)
+            # 其他情况，使用模糊匹配
+            else:
+                query = query.filter(ZtPool.limit_up_statistics.like(f"%{limit_up_statistics_trimmed}%"))
+        
+        # 概念板块筛选（通过关联表）
+        if concept_ids or concept_names:
+            concept_subquery = db.query(StockConceptMapping.stock_name).distinct()
+            
+            if concept_ids:
+                concept_subquery = concept_subquery.filter(
+                    StockConceptMapping.concept_id.in_(concept_ids)
+                )
+            
+            if concept_names:
+                concept_subquery = concept_subquery.join(
+                    StockConcept,
+                    StockConceptMapping.concept_id == StockConcept.id
+                ).filter(
+                    StockConcept.name.in_(concept_names)
+                )
+            
+            stock_names = [row[0] for row in concept_subquery.all()]
+            if stock_names:
+                query = query.filter(ZtPool.stock_name.in_(stock_names))
+            else:
+                # 如果没有匹配的概念板块，返回空结果
+                query = query.filter(ZtPool.id == -1)
+        
+        # 是否龙虎榜筛选
+        if is_lhb is not None:
+            # 查询当日所有龙虎榜股票代码
+            lhb_stock_codes_query = db.query(LhbDetail.stock_code).filter(
+                LhbDetail.date == target_date
+            ).distinct()
+            lhb_stock_codes = {row[0] for row in lhb_stock_codes_query.all()}
+            
+            if is_lhb:
+                # 只返回在龙虎榜中的股票
+                if lhb_stock_codes:
+                    query = query.filter(ZtPool.stock_code.in_(lhb_stock_codes))
+                else:
+                    # 如果没有龙虎榜数据，返回空结果
+                    query = query.filter(ZtPool.id == -1)
+            else:
+                # 只返回不在龙虎榜中的股票
+                if lhb_stock_codes:
+                    query = query.filter(~ZtPool.stock_code.in_(lhb_stock_codes))
         
         # 排序
         if sort_by:
@@ -79,7 +149,19 @@ class ZtPoolService:
         for item in items:
             setattr(item, 'is_lhb', item.stock_code in lhb_stock_codes)
         
+        # 为每个涨停股加载概念板块
+        from app.services.stock_concept_service import StockConceptService
+        for item in items:
+            concepts = StockConceptService.get_by_stock_name(db, item.stock_name)
+            setattr(item, '_concepts', concepts)
+        
         return items, total
+    
+    @staticmethod
+    def get_concepts_for_zt_pool(db: Session, zt_pool: ZtPool) -> List:
+        """获取涨停池记录的概念板块列表"""
+        from app.services.stock_concept_service import StockConceptService
+        return StockConceptService.get_by_stock_name(db, zt_pool.stock_name)
     
     @staticmethod
     def get_zt_analysis(
@@ -336,6 +418,13 @@ class ZtPoolDownService:
         total = query.count()
         offset = (page - 1) * page_size
         items = query.offset(offset).limit(page_size).all()
+        
+        # 为每个跌停股加载概念板块
+        from app.services.stock_concept_service import StockConceptService
+        for item in items:
+            concepts = StockConceptService.get_by_stock_name(db, item.stock_name)
+            setattr(item, '_concepts', concepts)
+        
         return items, total
 
     @staticmethod

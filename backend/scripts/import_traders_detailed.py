@@ -10,13 +10,16 @@ import re
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from app.database.session import SessionLocal
+from app.database.session import SessionLocal, engine
 from app.models.lhb import Trader, TraderBranch
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
 
 
 # 游资数据：名称、说明、关联机构列表
 # 格式：游资名称\t说明\t关联机构（用顿号或逗号分隔）
-TRADERS_DATA = """龙飞虎	龙飞虎(克拉美书)股灾期间曾为桃县精神领袖，留有颇多名言，可见人品股品。	华泰证券股份有限公司南京六合雄州西路证券营业部
+TRADERS_DATA = """名称	说明	关联机构
+龙飞虎	龙飞虎(克拉美书)股灾期间曾为桃县精神领袖，留有颇多名言，可见人品股品。	华泰证券股份有限公司南京六合雄州西路证券营业部
 高送转专家	擅长在高送转个股进行波段操作	财通证券股份有限公司常熟枫林路证券营业部
 高毅邻山	价投大神"茅台03"，真名冯柳。自述曾有9年时间多达93%的年复利回报。眼光犀利独到，风格以中长线为主，碰上短线风口会主动配合炒作迅速推升股价。	国信证券股份有限公司深圳罗湖宝安北路证券营业部
 骑牛	敢于追涨，锁仓，也敢于割肉。	中国银河证券股份有限公司重庆民族路证券营业部
@@ -29,8 +32,7 @@ TRADERS_DATA = """龙飞虎	龙飞虎(克拉美书)股灾期间曾为桃县精�
 量化基金	20年参与京粮控股首次携假机构入场，凭借机构席位溢价次日获得一字板，到现在量化基金已经是市场上非常活跃的一股力量，内部资金成分复杂，多家机构混杂在其中，但是整体策略同样是起到助涨助跌的作用，会频繁做T。	华泰证券股份有限公司总部、中国国际金融股份有限公司上海黄浦区湖滨路证券营业部、中国国际金融股份有限公司上海分公司、中国中金财富证券有限公司北京宋庄路证券营业部、东北证券股份有限公司绍兴金柯桥大道证券营业部
 赵老哥	以短线点火打板为主，擅长主线题材炒作，主抓龙头股。主要参与市场风口的龙头股接力板，激发市场资金持续接力。盘中操作手法主要以急速暴量扫货封板为主，利用资金优势万手大单排板。	银泰证券有限责任公司上海嘉善路证券营业部、湘财证券股份有限公司上海陆家嘴证券营业部、浙商证券股份有限公司绍兴分公司、浙商证券股份有限公司湖州双子大厦证券营业部、华泰证券股份有限公司浙江分公司、中国银河证券股份有限公司绍兴证券营业部、中国银河证券股份有限公司北京阜成路证券营业部
 西湖国贸	顶级价投型资金，顶级理解力，善于挖掘低位的趋势牛股，波段持股为主。	财信证券股份有限公司杭州西湖国贸中心证券营业部
-葛卫东	葛卫东偏爱科技股，其次是医药股，基本以中、长线投资为主，买入股票后往往会持有几年时间直至股价起飞
-	国泰君安证券股份有限公司上海分公司
+葛卫东	葛卫东偏爱科技股，其次是医药股，基本以中、长线投资为主，买入股票后往往会持有几年时间直至股价起飞	国泰君安证券股份有限公司上海分公司
 著名刺客	活跃于股吧、论坛的小游资，擅长龙头股锁仓。	海通证券股份有限公司北京阜外大街证券营业部、东莞证券股份有限公司北京分公司
 落升(江南神鹰)	落升(江南神鹰)03年的股评红遍网络05年底隐居隐居3年狂赚112倍他的故事网上有详细记载据观察其后自然人名罗申，取的是谐音，大熊市战绩斐然，令人惊叹，游资界早年网红派。	光大证券股份有限公司金华宾虹路证券营业部
 苏州帮	以做短线为主，常见高抛低吸，做T营业部。	海通证券股份有限公司杭州市心北路证券营业部、广发证券股份有限公司苏州东吴北路证券营业部、华泰证券股份有限公司苏州人民路证券营业部、兴业证券股份有限公司上海金陵东路证券营业部、东吴证券股份有限公司苏州西北街证券营业部、东吴证券股份有限公司常州通江中路证券营业部
@@ -92,9 +94,7 @@ TRADERS_DATA = """龙飞虎	龙飞虎(克拉美书)股灾期间曾为桃县精�
 作手新一	新生代小游资，资金体量相对较小，但常常活跃在各大社交论坛，知名度相对较高。	国泰君安证券股份有限公司南京太平南路证券营业部、中国中金财富证券有限公司南京中央路证券营业部
 佛山系	能够在短时间内主导个股走势，风格超短，嗅觉敏感。擅长短线，早盘快速拉板，制造日内龙头，一根线拉板，从小资金做起的典范。擅长做一板个股，往往以一日游为主，次日冲高快速获利出局；	长江证券股份有限公司武汉武珞路证券营业部、长江证券股份有限公司惠州金山湖证券营业部、长江证券股份有限公司佛山普澜二路证券营业部、诚通证券股份有限公司佛山南海大道证券营业部、湘财证券股份有限公司佛山星辰路证券营业部、海通证券股份有限公司广州珠江西路证券营业部、方正证券股份有限公司北京安定门外大街证券营业部、国盛证券有限责任公司合肥翠微路证券营业部、国泰君安证券股份有限公司顺德大良证券营业部、华泰证券股份有限公司广州兴民路证券营业部、光大证券股份有限公司佛山绿景路证券营业部、光大证券股份有限公司佛山季华六路证券营业部、东莞证券股份有限公司东莞横沥中山东路证券营业部、 长江证券股份有限公司佛山南海大道证券营业部
 余哥	2022年新晋游资，95后，资金增长速度之快令人咋舌，擅长机构游资合力大妖股，市场理解力顶级。	申港证券股份有限公司浙江分公司、甬兴证券有限公司青岛同安路证券营业部
-交易猿	操作手法，大多都是满仓资金梭哈一只股票，且这只股票前期已经有巨大涨幅，流通盘、成交量巨大的大票，做大票的半路主升浪。
-
-	华泰证券股份有限公司天津东丽开发区二纬路证券营业部
+交易猿	操作手法，大多都是满仓资金梭哈一只股票，且这只股票前期已经有巨大涨幅，流通盘、成交量巨大的大票，做大票的半路主升浪。	华泰证券股份有限公司天津东丽开发区二纬路证券营业部
 乔帮主	一线游资，资金量上亿，风格凶悍，纪律严格，低吸配合打板。	招商证券股份有限公司深圳蛇口工业三路证券营业部
 中信总部	中信证券股份有限公司总部(非营业场所)	中信证券股份有限公司总部(非营业场所)
 上海超短帮	以短线速度建仓吸凑,持股周期在3-5日内,经常协同机构专用席位拉升；资金实力雄厚，通常选取一些有明显的基本面支撑的标的，携手机构席位，以小波段运作为主，整体成功率较高	申万宏源证券有限公司上海闵行区东川路证券营业部、国泰君安证券股份有限公司济宁吴泰闸路证券营业部、国泰君安证券股份有限公司上海新闸路证券营业部、东方证券股份有限公司无锡新生路证券营业部、东方证券股份有限公司上海浦东新区银城中路证券营业部
@@ -115,10 +115,19 @@ def parse_traders_data(data_text: str) -> list:
     traders = []
     lines = data_text.strip().split('\n')
     
+    # 跳过表头行
+    header_patterns = ["游资信息解析存储数据库名称", "名称", "说明", "关联机构"]
+    
     for line in lines:
         line = line.strip()
         if not line:
             continue
+        
+        # 跳过表头行
+        if any(pattern in line for pattern in header_patterns) and len(line.split('\t')) <= 3:
+            # 检查是否是纯表头行（不包含实际数据）
+            if line in ["游资信息解析存储数据库名称\t说明\t关联机构", "名称\t说明\t关联机构"] or (line.startswith("名称") and "说明" in line and "关联机构" in line):
+                continue
         
         # 使用制表符分割：名称、说明、机构列表
         parts = line.split('\t')
@@ -175,8 +184,19 @@ def find_institution_code(db, institution_name: str) -> str | None:
     return None
 
 
-def upsert_trader(session, name: str, description: str, branches: list):
-    """更新或插入游资数据"""
+def upsert_trader(session, name: str, description: str, branches: list, force_reimport: bool = False):
+    """更新或插入游资数据
+    
+    Args:
+        session: 数据库会话
+        name: 游资名称
+        description: 游资说明
+        branches: 营业部列表
+        force_reimport: 是否强制重新导入（删除旧关联后重新创建）
+    """
+    # 先刷新会话，确保看到最新的数据库状态
+    session.expire_all()
+    
     trader = session.query(Trader).filter(Trader.name == name).first()
     
     if not trader:
@@ -186,13 +206,18 @@ def upsert_trader(session, name: str, description: str, branches: list):
         session.flush()
         print(f"✅ 创建游资: {name}")
     else:
-        # 更新说明（如果aka为空或不同）
-        if not trader.aka or trader.aka != description:
-            trader.aka = description
-            print(f"🔄 更新游资说明: {name}")
-    
-    # 删除旧的营业部关联（如果需要完全替换）
-    # session.query(TraderBranch).filter(TraderBranch.trader_id == trader.id).delete()
+        # 更新说明
+        trader.aka = description
+        print(f"🔄 更新游资: {name}")
+        
+        # 如果强制重新导入，删除所有旧的营业部关联
+        if force_reimport:
+            deleted_count = session.query(TraderBranch).filter(
+                TraderBranch.trader_id == trader.id
+            ).delete(synchronize_session=False)  # 使用synchronize_session=False避免会话同步问题
+            if deleted_count > 0:
+                print(f"  🗑️  删除 {deleted_count} 个旧机构关联")
+            session.flush()
     
     added_count = 0
     skipped_count = 0
@@ -216,20 +241,8 @@ def upsert_trader(session, name: str, description: str, branches: list):
         if not inst_code:
             inst_code = find_institution_code(session, inst_name)
         
-        # 检查是否已存在
-        existing = session.query(TraderBranch).filter(
-            TraderBranch.trader_id == trader.id,
-            TraderBranch.institution_name == inst_name
-        ).first()
-        
-        if existing:
-            # 更新代码（如果之前没有）
-            if not existing.institution_code and inst_code:
-                existing.institution_code = inst_code
-                print(f"  🔄 更新机构代码: {inst_name} -> {inst_code}")
-            skipped_count += 1
-        else:
-            # 创建新关联
+        # 如果强制重新导入，直接创建新关联
+        if force_reimport:
             branch = TraderBranch(
                 trader_id=trader.id,
                 institution_name=inst_name,
@@ -237,48 +250,220 @@ def upsert_trader(session, name: str, description: str, branches: list):
             )
             session.add(branch)
             added_count += 1
+        else:
+            # 检查是否已存在
+            existing = session.query(TraderBranch).filter(
+                TraderBranch.trader_id == trader.id,
+                TraderBranch.institution_name == inst_name
+            ).first()
+            
+            if existing:
+                # 更新代码（如果之前没有）
+                if not existing.institution_code and inst_code:
+                    existing.institution_code = inst_code
+                    print(f"  🔄 更新机构代码: {inst_name} -> {inst_code}")
+                skipped_count += 1
+            else:
+                # 创建新关联
+                branch = TraderBranch(
+                    trader_id=trader.id,
+                    institution_name=inst_name,
+                    institution_code=inst_code,
+                )
+                session.add(branch)
+                added_count += 1
     
     session.flush()
-    print(f"  📊 {name}: 新增 {added_count} 个机构，跳过 {skipped_count} 个")
+    if force_reimport:
+        print(f"  📊 {name}: 重新导入 {added_count} 个机构")
+    else:
+        print(f"  📊 {name}: 新增 {added_count} 个机构，跳过 {skipped_count} 个")
     
     return added_count, skipped_count
 
 
-def main():
-    """主函数"""
+def main(force_reimport: bool = True):
+    """主函数
+    
+    Args:
+        force_reimport: 是否强制重新导入所有机构关联（默认True）
+    """
     print("开始解析游资数据...")
     traders_data = parse_traders_data(TRADERS_DATA)
-    print(f"解析完成，共 {len(traders_data)} 个游资\n")
+    print(f"解析完成，共 {len(traders_data)} 个游资")
+    if force_reimport:
+        print("⚠️  强制重新导入模式：将删除并重新创建所有机构关联\n")
+    else:
+        print()
     
     session = SessionLocal()
     try:
+        # 先检查数据库实际状态（使用完全独立的连接，确保看到已提交的数据）
+        # 创建一个全新的引擎和会话，确保看到真实的数据库状态
+        check_engine = create_engine(str(engine.url), pool_pre_ping=True)
+        CheckSessionLocal = sessionmaker(autoflush=False, bind=check_engine)
+        check_db = CheckSessionLocal()
+        try:
+            actual_trader_count = check_db.query(Trader).count()
+            actual_branch_count = check_db.query(TraderBranch).count()
+            print(f"📊 数据库当前状态（独立连接）:")
+            print(f"   游资主体: {actual_trader_count} 个")
+            print(f"   机构关联: {actual_branch_count} 个\n")
+        finally:
+            check_db.close()
+            check_engine.dispose()
+        
         total_added = 0
         total_skipped = 0
         
         for i, trader_data in enumerate(traders_data, 1):
             print(f"[{i}/{len(traders_data)}] 处理: {trader_data['name']}")
-            added, skipped = upsert_trader(
-                session,
-                name=trader_data['name'],
-                description=trader_data['description'],
-                branches=trader_data['branches']
-            )
-            total_added += added
-            total_skipped += skipped
+            try:
+                added, skipped = upsert_trader(
+                    session,
+                    name=trader_data['name'],
+                    description=trader_data['description'],
+                    branches=trader_data['branches'],
+                    force_reimport=force_reimport
+                )
+                total_added += added
+                total_skipped += skipped
+            except Exception as e:
+                print(f"  ❌ 处理 {trader_data['name']} 时出错: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                session.rollback()
+                raise
         
-        session.commit()
+        # 提交前验证
+        trader_count_before = session.query(Trader).count()
+        branch_count_before = session.query(TraderBranch).count()
+        print(f"\n📊 提交前统计:")
+        print(f"   游资主体: {trader_count_before} 个")
+        print(f"   机构关联: {branch_count_before} 个")
+        
+        # 强制刷新并提交
+        session.flush()
+        
+        # 提交前再次验证
+        print(f"\n🔄 准备提交事务...")
+        try:
+            # 确保所有pending的对象都被flush
+            session.flush()
+            # 提交事务
+            session.commit()
+            print(f"✅ 事务已提交")
+            
+            # 验证提交是否成功（使用原始SQL，绕过ORM缓存）
+            from sqlalchemy import text
+            result = session.execute(text('SELECT COUNT(*) FROM trader'))
+            count_after_commit = result.scalar()
+            print(f"📊 提交后直接SQL查询（同一会话）: {count_after_commit} 个游资")
+            
+            # 使用完全独立的连接验证（关闭当前会话后）
+            session.close()
+            import time
+            time.sleep(0.5)  # 等待事务完全提交
+            
+            # 创建全新的引擎验证
+            verify_engine = create_engine(str(engine.url), pool_pre_ping=True)
+            VerifySessionLocal = sessionmaker(autoflush=False, bind=verify_engine)
+            verify_db = VerifySessionLocal()
+            try:
+                verify_result = verify_db.execute(text('SELECT COUNT(*) FROM trader'))
+                verify_count = verify_result.scalar()
+                print(f"📊 提交后独立连接SQL查询: {verify_count} 个游资")
+                
+                if verify_count == 0:
+                    print("⚠️  警告: 独立连接查询显示0条记录，事务可能未真正提交！")
+                elif verify_count != count_after_commit:
+                    print(f"⚠️  警告: 查询结果不一致！同一会话: {count_after_commit}, 独立连接: {verify_count}")
+            finally:
+                verify_db.close()
+                verify_engine.dispose()
+            
+            # 重新创建会话用于后续操作
+            session = SessionLocal()
+        except Exception as e:
+            print(f"❌ 提交失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            session.rollback()
+            raise
+        
+        # 提交后验证（使用新查询确保数据已持久化）
+        session.expire_all()  # 清除会话缓存
+        trader_count_after = session.query(Trader).count()
+        branch_count_after = session.query(TraderBranch).count()
+        print(f"\n📊 提交后统计 (同一会话):")
+        print(f"   游资主体: {trader_count_after} 个")
+        print(f"   机构关联: {branch_count_after} 个")
+        
+        # 关闭当前会话，使用新会话验证
+        session.close()
+        verify_session = SessionLocal()
+        try:
+            verify_trader_count = verify_session.query(Trader).count()
+            verify_branch_count = verify_session.query(TraderBranch).count()
+            print(f"\n📊 新会话验证:")
+            print(f"   游资主体: {verify_trader_count} 个")
+            print(f"   机构关联: {verify_branch_count} 个")
+        finally:
+            verify_session.close()
+        
         print(f"\n✅ 导入完成!")
         print(f"   游资主体: {len(traders_data)} 个")
-        print(f"   新增机构关联: {total_added} 个")
-        print(f"   跳过机构关联: {total_skipped} 个")
+        if force_reimport:
+            print(f"   重新导入机构关联: {total_added} 个")
+        else:
+            print(f"   新增机构关联: {total_added} 个")
+            print(f"   跳过机构关联: {total_skipped} 个")
     except Exception as e:
         print(f"\n❌ 导入失败: {str(e)}")
         import traceback
         traceback.print_exc()
         session.rollback()
+        raise
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 if __name__ == "__main__":
     main()
+    
+    # 最终验证：使用完全独立的连接（创建新引擎）
+    print("\n" + "="*50)
+    print("最终验证（完全独立连接）")
+    print("="*50)
+    import time
+    time.sleep(1)  # 等待事务完全提交
+    
+    # 创建全新的引擎和会话，确保看到真实的数据库状态
+    # PostgreSQL使用READ COMMITTED隔离级别
+    final_engine = create_engine(str(engine.url), pool_pre_ping=True, isolation_level="READ COMMITTED")
+    FinalSessionLocal = sessionmaker(autoflush=False, bind=final_engine)
+    final_db = FinalSessionLocal()
+    try:
+        final_trader_count = final_db.query(Trader).count()
+        final_branch_count = final_db.query(TraderBranch).count()
+        print(f"✅ 最终验证结果（独立引擎）:")
+        print(f"   游资主体: {final_trader_count} 个")
+        print(f"   机构关联: {final_branch_count} 个")
+        
+        if final_trader_count == 0:
+            print("\n⚠️  警告: 数据库中没有记录！")
+            print("   可能的原因:")
+            print("   1. 事务未正确提交")
+            print("   2. 连接到了错误的数据库")
+            print("   3. 数据库权限问题")
+            print("   4. 事务隔离级别问题")
+        else:
+            print(f"\n✅ 数据已成功导入数据库！")
+            # 显示一个示例
+            sample = final_db.query(Trader).first()
+            if sample:
+                print(f"   示例: {sample.name} - {len(sample.branches) if sample.branches else 0} 个机构")
+    finally:
+        final_db.close()
+        final_engine.dispose()

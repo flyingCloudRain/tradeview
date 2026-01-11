@@ -32,6 +32,7 @@ class TaskService:
     
     TASK_NAMES = {
         "lhb": "龙虎榜数据同步",
+        "lhb_institution": "龙虎榜机构数据同步",
         "zt_pool": "涨停池数据同步",
         "zt_pool_down": "跌停池数据同步",
         "index": "大盘指数数据同步",

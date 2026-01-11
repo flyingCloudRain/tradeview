@@ -8,6 +8,7 @@ from datetime import date
 import pandas as pd
 
 from app.models.fund_flow import StockFundFlow, IndustryFundFlow, ConceptFundFlow
+from app.models.stock_concept import StockConceptMapping, StockConcept
 from app.models.zt_pool import ZtPool
 from app.models.lhb import LhbDetail
 from app.utils.akshare_utils import safe_akshare_call
@@ -101,6 +102,8 @@ class FundFlowService:
         db: Session,
         target_date: date,
         stock_code: Optional[str] = None,
+        concept_ids: Optional[List[int]] = None,
+        concept_names: Optional[List[str]] = None,
         page: int = 1,
         page_size: int = 20,
         sort_by: Optional[str] = None,
@@ -111,6 +114,30 @@ class FundFlowService:
         
         if stock_code:
             query = query.filter(StockFundFlow.stock_code == stock_code)
+        
+        # 概念板块筛选（通过关联表）
+        if concept_ids or concept_names:
+            concept_subquery = db.query(StockConceptMapping.stock_name).distinct()
+            
+            if concept_ids:
+                concept_subquery = concept_subquery.filter(
+                    StockConceptMapping.concept_id.in_(concept_ids)
+                )
+            
+            if concept_names:
+                concept_subquery = concept_subquery.join(
+                    StockConcept,
+                    StockConceptMapping.concept_id == StockConcept.id
+                ).filter(
+                    StockConcept.name.in_(concept_names)
+                )
+            
+            stock_names = [row[0] for row in concept_subquery.all()]
+            if stock_names:
+                query = query.filter(StockFundFlow.stock_name.in_(stock_names))
+            else:
+                # 如果没有匹配的概念板块，返回空结果
+                query = query.filter(StockFundFlow.id == -1)
 
         # 排序
         if sort_by:
@@ -128,7 +155,19 @@ class FundFlowService:
         offset = (page - 1) * page_size
         items = query.offset(offset).limit(page_size).all()
         
+        # 为每个记录加载概念板块
+        from app.services.stock_concept_service import StockConceptService
+        for item in items:
+            concepts = StockConceptService.get_by_stock_name(db, item.stock_name)
+            setattr(item, '_concepts', concepts)
+        
         return items, total
+    
+    @staticmethod
+    def get_concepts_for_fund_flow(db: Session, fund_flow: StockFundFlow) -> List:
+        """获取资金流记录的概念板块列表"""
+        from app.services.stock_concept_service import StockConceptService
+        return StockConceptService.get_by_stock_name(db, fund_flow.stock_name)
     
     @staticmethod
     def get_fund_flow_history(

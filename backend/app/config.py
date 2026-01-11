@@ -15,11 +15,10 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     
     # 数据库配置
-    # 优先使用环境变量，如果没有则尝试SQLite（用于开发测试）
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL",
-        f"sqlite:///{os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'trading_review.db')}"
-    )
+    # 必须通过环境变量设置 DATABASE_URL
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL environment variable is required")
     
     # Supabase配置
     SUPABASE_URL: Optional[str] = os.getenv("SUPABASE_URL")

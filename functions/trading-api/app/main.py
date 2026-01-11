@@ -22,15 +22,48 @@ app = FastAPI(
 import re
 precise_origins = [origin for origin in settings.CORS_ORIGINS if "*" not in origin]
 
+# CORS正则表达式模式
+CORS_ORIGIN_REGEX = r"https://.*\.tcloudbaseapp\.com"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https://.*\.tcloudbaseapp\.com",  # 允许所有 tcloudbaseapp.com 子域名
+    allow_origin_regex=CORS_ORIGIN_REGEX,  # 允许所有 tcloudbaseapp.com 子域名
     allow_origins=precise_origins,  # 精确匹配的域名（本地开发等）
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+
+def get_allowed_origin(request: Request) -> str:
+    """获取允许的Origin，支持精确匹配和正则匹配"""
+    origin = request.headers.get("origin")
+    if not origin:
+        return "*"
+    
+    # 检查精确匹配
+    if origin in settings.CORS_ORIGINS:
+        return origin
+    
+    # 检查正则匹配（CloudBase域名）
+    if re.match(CORS_ORIGIN_REGEX, origin):
+        return origin
+    
+    # 如果都不匹配，返回第一个允许的源或通配符
+    return settings.CORS_ORIGINS[0] if settings.CORS_ORIGINS else "*"
+
+
+def get_cors_headers(request: Request) -> dict:
+    """获取CORS响应头"""
+    origin = get_allowed_origin(request)
+    return {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "*",
+        "Access-Control-Allow-Headers": "*",
+    }
+
 
 # 全局异常处理，确保CORS头总是被添加
 @app.exception_handler(Exception)
@@ -40,53 +73,44 @@ async def global_exception_handler(request: Request, exc: Exception):
     error_msg = str(exc)
     print(f"[Global Exception Handler] 错误: {error_msg}")
     traceback.print_exc()
-    origin = request.headers.get("origin", "*")
-    if origin not in settings.CORS_ORIGINS and origin != "*":
-        origin = settings.CORS_ORIGINS[0] if settings.CORS_ORIGINS else "*"
     return JSONResponse(
         status_code=500,
         content={"detail": f"服务器内部错误: {error_msg}"},
-        headers={
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Credentials": "true",
-        }
+        headers=get_cors_headers(request)
     )
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     """HTTP异常处理，确保CORS头总是被添加"""
-    origin = request.headers.get("origin", "*")
-    if origin not in settings.CORS_ORIGINS and origin != "*":
-        origin = settings.CORS_ORIGINS[0] if settings.CORS_ORIGINS else "*"
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail},
-        headers={
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Credentials": "true",
-        }
+        headers=get_cors_headers(request)
     )
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """请求验证异常处理，确保CORS头总是被添加"""
     from fastapi.encoders import jsonable_encoder
-    origin = request.headers.get("origin", "*")
-    if origin not in settings.CORS_ORIGINS and origin != "*":
-        origin = settings.CORS_ORIGINS[0] if settings.CORS_ORIGINS else "*"
     # 使用 jsonable_encoder 确保所有字段都能被正确序列化
     errors = jsonable_encoder(exc.errors())
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": errors},
-        headers={
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Credentials": "true",
-        }
+        headers=get_cors_headers(request)
     )
 
 # 注册路由
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str, request: Request):
+    """处理 OPTIONS 预检请求"""
+    return JSONResponse(
+        content={},
+        headers=get_cors_headers(request)
+    )
 
 
 @app.get("/")

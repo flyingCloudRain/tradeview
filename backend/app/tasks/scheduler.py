@@ -14,6 +14,89 @@ from app.utils.sync_result import SyncResult
 from app.models.task_execution import TaskStatus
 
 
+def sync_lhb_institution_data(target_date: date | None = None):
+    """
+    同步龙虎榜个股对应的交易机构数据
+    此任务应在龙虎榜基础数据同步之后执行
+    
+    Args:
+        target_date: 目标日期，None表示使用交易日
+    """
+    db = SessionLocal()
+    execution = None
+    try:
+        if target_date is None:
+            target_date = get_trading_date()
+        if target_date is None:
+            raise ValueError("无法获取交易日，请指定target_date")
+        target_date_str = target_date.strftime("%Y-%m-%d")
+        print(f"开始同步 {target_date} 的龙虎榜机构数据...")
+        
+        # 延迟导入避免循环导入
+        from app.services.task_service import TaskService
+        from app.services.lhb_service import LhbService
+        
+        # 创建执行记录
+        execution = TaskService.create_execution_record(
+            db=db,
+            task_name="龙虎榜机构数据同步",
+            task_type="lhb_institution",
+            triggered_by="scheduler",
+            target_date=target_date_str,
+        )
+        execution.status = TaskStatus.RUNNING
+        db.commit()
+        
+        execution_id = execution.id
+        task_start_time = time.time()
+        
+        # 执行机构数据同步
+        result = LhbService.sync_institution_data(db, target_date)
+        
+        task_duration = time.time() - task_start_time
+        
+        # 更新执行记录状态
+        from app.services.task_service import make_json_serializable
+        
+        serializable_result = make_json_serializable({
+            "success": result.success if isinstance(result, SyncResult) else result,
+            "duration": f"{task_duration:.2f}",
+            "message": str(result) if isinstance(result, SyncResult) else ("成功" if result else "失败"),
+        })
+        
+        TaskService.update_execution_status(
+            db=db,
+            execution_id=execution_id,
+            status=TaskStatus.SUCCESS if (result.success if isinstance(result, SyncResult) else result) else TaskStatus.FAILED,
+            result=serializable_result,
+            error_message=result.error if isinstance(result, SyncResult) and not result.success else None,
+        )
+        
+        if result.success if isinstance(result, SyncResult) else result:
+            print(f"✅ 龙虎榜机构数据同步成功: {result}")
+        else:
+            print(f"❌ 龙虎榜机构数据同步失败: {result}")
+            
+    except Exception as e:
+        print(f"龙虎榜机构数据同步失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # 更新执行记录状态为失败
+        if execution:
+            try:
+                from app.services.task_service import TaskService
+                TaskService.update_execution_status(
+                    db=db,
+                    execution_id=execution.id,
+                    status=TaskStatus.FAILED,
+                    error_message=str(e),
+                )
+            except:
+                pass
+    finally:
+        db.close()
+
+
 def init_scheduler():
     """初始化调度器"""
     # 使用北京时间
@@ -26,6 +109,15 @@ def init_scheduler():
         trigger=CronTrigger(hour=16, minute=0, timezone=beijing_tz),
         id='sync_daily_data',
         name='每日数据同步',
+        replace_existing=True
+    )
+    
+    # 龙虎榜机构数据同步（北京时间 16:30，在基础数据同步之后）
+    scheduler.add_job(
+        sync_lhb_institution_data,
+        trigger=CronTrigger(hour=16, minute=30, timezone=beijing_tz),
+        id='sync_lhb_institution_data',
+        name='龙虎榜机构数据同步',
         replace_existing=True
     )
     
@@ -86,6 +178,7 @@ def sync_daily_data(task_types: list[str] | None = None, target_date: date | Non
         
         task_map = {
             "lhb": lambda: LhbService.sync_data(db, target_date),
+            "lhb_institution": lambda: LhbService.sync_institution_data(db, target_date),
             "zt_pool": lambda: ZtPoolService.sync_data(db, target_date),
             "zt_pool_down": lambda: ZtPoolDownService.sync_data(db, target_date),
             "index": lambda: IndexService.sync_data(db, target_date),

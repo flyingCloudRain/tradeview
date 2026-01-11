@@ -34,9 +34,25 @@ class ZtPoolResponse(ZtPoolBase):
     id: int
     created_at: datetime
     is_lhb: Optional[bool] = False  # 是否属于当日龙虎榜
+    concepts: Optional[List[dict]] = None  # 概念板块列表
     
     class Config:
         from_attributes = True
+    
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        """重写验证方法，支持从模型对象中提取概念板块"""
+        if hasattr(obj, '_concepts'):
+            # 如果有动态添加的概念板块，转换为字典列表
+            concepts_data = [
+                {"id": c.id, "name": c.name, "code": c.code}
+                for c in obj._concepts
+            ]
+            # 创建字典并添加concepts字段
+            data = super().model_validate(obj, **kwargs).model_dump()
+            data['concepts'] = concepts_data
+            return cls(**data)
+        return super().model_validate(obj, **kwargs)
 
 
 class ZtPoolListResponse(BaseModel):

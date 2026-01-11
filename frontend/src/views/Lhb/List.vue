@@ -93,7 +93,21 @@
           </template>
         </el-table-column>
         <el-table-column prop="turnover_rate" label="换手率(%)" width="120" sortable="custom" />
-        <el-table-column prop="concept" label="概念" width="200" show-overflow-tooltip />
+        <el-table-column prop="concept" label="概念" min-width="200">
+          <template #default="{ row }">
+            <div v-if="getConceptList(row.concept).length > 0" class="concept-tags">
+              <el-tag
+                v-for="(concept, idx) in getConceptList(row.concept)"
+                :key="idx"
+                size="small"
+                style="margin-right: 4px; margin-bottom: 4px"
+              >
+                {{ concept }}
+              </el-tag>
+            </div>
+            <span v-else style="color: #909399">无</span>
+          </template>
+        </el-table-column>
         <el-table-column label="交易机构" width="150">
           <template #default="{ row }">
             <span v-if="row.institutions && row.institutions.length > 0">
@@ -198,6 +212,15 @@ const handleSortChange = (sort: { prop: string; order: 'ascending' | 'descending
   fetchData()
 }
 
+// 解析概念字符串为数组（支持逗号、空格分隔）
+const getConceptList = (conceptStr: string | null | undefined): string[] => {
+  if (!conceptStr) return []
+  return conceptStr
+    .split(/[,，\s]+/)
+    .map((c) => c.trim())
+    .filter((c) => c.length > 0)
+}
+
 onMounted(() => {
   fetchData()
 })
@@ -222,6 +245,12 @@ onMounted(() => {
 
 .text-gray {
   color: #909399;
+}
+
+.concept-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
 }
 </style>
 

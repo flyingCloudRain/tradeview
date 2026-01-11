@@ -60,3 +60,7 @@ coverage/
 # 其他
 *.bak
 *.backup
+gcp-sa-key.json
+
+# GCP 密钥和配置
+github-secrets-config.md

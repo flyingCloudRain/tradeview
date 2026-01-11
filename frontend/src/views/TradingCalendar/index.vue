@@ -10,43 +10,70 @@
                 <span>日历视图</span>
               </span>
             </template>
-          <div class="calendar-view">
-            <el-calendar v-model="calendarDate" class="trading-calendar-view">
+          <div class="calendar-view" v-if="viewMode === 'calendar'">
+            <el-calendar 
+              v-model="calendarDate" 
+              class="trading-calendar-view"
+              :key="`calendar-${allCalendarData.length}`"
+            >
               <template #date-cell="{ data }">
-                <div class="calendar-cell">
+                <div class="calendar-cell" v-if="data.day">
                   <div class="calendar-date">{{ data.day.split('-').slice(2).join('-') }}</div>
-                  <div class="calendar-items">
-                    <div
-                      v-for="item in getItemsByDate(data.day)"
-                      :key="item.id"
-                      class="calendar-item"
-                      :class="{
-                        'buy': item.direction === '买入',
-                        'sell': item.direction === '卖出',
-                        'executed': item.is_executed
-                      }"
-                      @click.stop="handleEdit(item)"
-                    >
-                      <div class="item-main">
-                        <span class="item-stock">{{ item.stock_name }}</span>
-                        <el-tag
-                          :type="item.direction === '买入' ? 'danger' : 'success'"
-                          size="small"
-                          effect="plain"
-                          class="direction-tag"
-                        >
-                          {{ item.direction }}
-                        </el-tag>
-                        <el-tag
-                          :type="item.strategy === '低吸' ? 'success' : 'warning'"
-                          size="small"
-                          effect="plain"
-                          class="strategy-tag"
-                        >
-                          {{ item.strategy }}
-                        </el-tag>
+                  <div class="calendar-items-container">
+                    <!-- 买入列 -->
+                    <div class="calendar-column buy-column">
+                      <div class="column-header" v-if="shouldShowColumnHeader(data.day)">买入</div>
+                      <div class="calendar-items">
+                        <template v-for="item in getBuyItemsByDate(data.day)" :key="item.id">
+                          <div
+                            class="calendar-item buy"
+                            :class="{ 'executed': item.is_executed }"
+                            @click.stop="handleEdit(item)"
+                          >
+                            <div class="item-main">
+                              <span class="item-stock">{{ item.stock_name }}</span>
+                              <el-tag
+                                :type="item.strategy === '低吸' ? 'success' : 'warning'"
+                                size="small"
+                                effect="plain"
+                                class="strategy-tag"
+                              >
+                                {{ item.strategy }}
+                              </el-tag>
+                            </div>
+                          </div>
+                        </template>
                       </div>
-                      <div v-if="item.price" class="item-price">¥{{ item.price.toFixed(2) }}</div>
+                    </div>
+                    <!-- 卖出列 -->
+                    <div class="calendar-column sell-column">
+                      <div class="column-header" v-if="shouldShowColumnHeader(data.day)">卖出</div>
+                      <div class="calendar-items">
+                        <template v-for="item in getSellItemsByDate(data.day)" :key="item.id">
+                          <div
+                            class="calendar-item sell"
+                            :class="{ 'executed': item.is_executed }"
+                            @click.stop="handleEdit(item)"
+                          >
+                            <div class="item-main">
+                              <span class="item-stock">{{ item.stock_name }}</span>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="calendar-cell">
+                  <div class="calendar-date"></div>
+                  <div class="calendar-items-container">
+                    <div class="calendar-column buy-column">
+                      <div class="column-header"></div>
+                      <div class="calendar-items"></div>
+                    </div>
+                    <div class="calendar-column sell-column">
+                      <div class="column-header"></div>
+                      <div class="calendar-items"></div>
                     </div>
                   </div>
                 </div>
@@ -63,6 +90,37 @@
           </template>
           <div class="table-view">
             <div class="filter-bar">
+              <el-select
+                v-model="source"
+                placeholder="来源"
+                clearable
+                style="width: 150px"
+                @change="handleSearch"
+              >
+                <el-option label="自己" value="自己" />
+                <el-option label="云聪" value="云聪" />
+                <el-option label="韩叔" value="韩叔" />
+              </el-select>
+              <el-select
+                v-model="direction"
+                placeholder="操作方向"
+                clearable
+                style="width: 150px"
+                @change="handleSearch"
+              >
+                <el-option label="买入" value="买入" />
+                <el-option label="卖出" value="卖出" />
+              </el-select>
+              <el-select
+                v-model="strategy"
+                placeholder="策略"
+                clearable
+                style="width: 150px"
+                @change="handleSearch"
+              >
+                <el-option label="低吸" value="低吸" />
+                <el-option label="排板" value="排板" />
+              </el-select>
               <el-date-picker
                 v-model="startDate"
                 type="date"
@@ -89,36 +147,7 @@
                 style="width: 200px"
                 @clear="handleSearch"
               />
-              <el-select
-                v-model="direction"
-                placeholder="操作方向"
-                clearable
-                style="width: 150px"
-                @change="handleSearch"
-              >
-                <el-option label="买入" value="买入" />
-                <el-option label="卖出" value="卖出" />
-              </el-select>
-              <el-select
-                v-model="strategy"
-                placeholder="策略"
-                clearable
-                style="width: 150px"
-                @change="handleSearch"
-              >
-                <el-option label="低吸" value="低吸" />
-                <el-option label="排板" value="排板" />
-              </el-select>
-              <el-select
-                v-model="source"
-                placeholder="来源"
-                clearable
-                style="width: 150px"
-                @change="handleSearch"
-              >
-                <el-option label="自己" value="自己" />
-                <el-option label="云聪" value="云聪" />
-              </el-select>
+
               <el-button type="primary" @click="handleSearch" :loading="loading">
                 <el-icon><Search /></el-icon>
                 查询
@@ -224,9 +253,24 @@
         </el-form-item>
         <el-form-item label="策略" prop="strategy">
           <el-select v-model="formData.strategy" placeholder="请选择策略" style="width: 100%">
-            <el-option label="低吸" value="低吸" />
             <el-option label="排板" value="排板" />
+            <el-option label="低吸" value="低吸" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="来源" prop="source">
+          <el-select v-model="formData.source" placeholder="请选择来源（可选）" clearable style="width: 100%">
+            <el-option label="自己" value="自己" />
+            <el-option label="云聪" value="云聪" />
+            <el-option label="韩叔" value="韩叔" />
+          </el-select>
+          <el-input 
+            v-if="!formData.source || (formData.source !== '自己' && formData.source !== '云聪' && formData.source !== '韩叔')"
+            v-model="formData.source" 
+            placeholder="或输入其他来源" 
+            maxlength="100"
+            show-word-limit
+            style="margin-top: 10px"
+          />
         </el-form-item>
         <el-form-item label="是否执行" prop="is_executed">
           <el-switch
@@ -245,20 +289,7 @@
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item label="来源" prop="source">
-          <el-select v-model="formData.source" placeholder="请选择来源（可选）" clearable style="width: 100%">
-            <el-option label="自己" value="自己" />
-            <el-option label="云聪" value="云聪" />
-          </el-select>
-          <el-input 
-            v-if="!formData.source || (formData.source !== '自己' && formData.source !== '云聪')"
-            v-model="formData.source" 
-            placeholder="或输入其他来源" 
-            maxlength="100"
-            show-word-limit
-            style="margin-top: 10px"
-          />
-        </el-form-item>
+
         <el-form-item label="备注" prop="notes">
           <el-input
             v-model="formData.notes"
@@ -433,9 +464,65 @@ const fetchCalendarData = async () => {
   allCalendarData.value = allItems
 }
 
-// 根据日期获取该日期的交易记录
-const getItemsByDate = (date: string): TradingCalendarItem[] => {
-  return allCalendarData.value.filter(item => item.date === date)
+// 根据日期获取该日期的交易记录信息（包含显示项和剩余数量）
+const getDateItemsInfo = (date: string | undefined): { items: TradingCalendarItem[], remaining: number } => {
+  if (!date || !allCalendarData.value || allCalendarData.value.length === 0) {
+    return { items: [], remaining: 0 }
+  }
+  const items = allCalendarData.value.filter(item => item.date === date)
+  const total = items.length
+  return {
+    items: items.slice(0, 8), // 最多返回8条记录
+    remaining: total > 8 ? total - 8 : 0
+  }
+}
+
+// 根据日期获取该日期的交易记录（最多8条）- 保持向后兼容
+const getItemsByDate = (date: string | undefined): TradingCalendarItem[] => {
+  return getDateItemsInfo(date).items
+}
+
+// 获取某天的剩余记录数（用于显示提示）
+const getRemainingItemsCount = (date: string | undefined): number => {
+  return getDateItemsInfo(date).remaining
+}
+
+// 根据日期获取买入记录
+const getBuyItemsByDate = (date: string | undefined): TradingCalendarItem[] => {
+  if (!date || !allCalendarData.value || allCalendarData.value.length === 0) {
+    return []
+  }
+  return allCalendarData.value.filter(item => item.date === date && item.direction === '买入')
+}
+
+// 根据日期获取卖出记录
+const getSellItemsByDate = (date: string | undefined): TradingCalendarItem[] => {
+  if (!date || !allCalendarData.value || allCalendarData.value.length === 0) {
+    return []
+  }
+  return allCalendarData.value.filter(item => item.date === date && item.direction === '卖出')
+}
+
+// 判断是否是周末（非交易日）
+const isWeekend = (date: string | undefined): boolean => {
+  if (!date) return false
+  const day = dayjs(date).day()
+  // 0 = 周日, 6 = 周六
+  return day === 0 || day === 6
+}
+
+// 判断是否应该显示列标题（第一列和最后一列的非交易日不显示）
+const shouldShowColumnHeader = (date: string | undefined): boolean => {
+  if (!date) return false
+  const day = dayjs(date).day()
+  // 第一列（周一，day=1）和最后一列（周日，day=0）如果是非交易日，不显示标题
+  // 周一通常不是非交易日，但如果是节假日可能是非交易日
+  // 周日通常是非交易日
+  if (day === 0 || day === 6) {
+    // 周末（非交易日）不显示标题
+    return false
+  }
+  return true
 }
 
 const handleSearch = () => {
@@ -705,6 +792,21 @@ onMounted(() => {
   vertical-align: top;
 }
 
+/* 第一列和最后一列宽度最小 */
+.trading-calendar-view :deep(.el-calendar-table td:first-child),
+.trading-calendar-view :deep(.el-calendar-table td:last-child) {
+  width: 1%;
+  min-width: 60px;
+  max-width: 80px;
+}
+
+.trading-calendar-view :deep(.el-calendar-table th:first-child),
+.trading-calendar-view :deep(.el-calendar-table th:last-child) {
+  width: 1%;
+  min-width: 60px;
+  max-width: 80px;
+}
+
 .trading-calendar-view :deep(.el-calendar-table__row) {
   min-height: 600px;
 }
@@ -724,6 +826,40 @@ onMounted(() => {
   color: #606266;
 }
 
+.calendar-items-container {
+  flex: 1;
+  display: flex;
+  gap: 2px;
+  height: 100%;
+  min-height: 140px;
+}
+
+.calendar-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.column-header {
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+  padding: 2px 0;
+  margin-bottom: 2px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.buy-column .column-header {
+  color: #f56c6c;
+  background-color: #fef0f0;
+}
+
+.sell-column .column-header {
+  color: #67c23a;
+  background-color: #f0f9ff;
+}
+
 .calendar-items {
   flex: 1;
   display: flex;
@@ -734,15 +870,16 @@ onMounted(() => {
 }
 
 .calendar-item {
-  padding: 0px 0px;
+  padding: 0px;
   border-radius: 2px;
   cursor: pointer;
-  border-left: 4px solid #909399;
-  min-height: 20px;
+  border-left: 3px solid #909399;
+  min-height: 16px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  font-size: 8px;
+  font-size: 10px;
+
 }
 .el-calendar__body {
     padding: 10px 10px 10px;
@@ -757,7 +894,6 @@ onMounted(() => {
 .calendar-item.buy {
   border-left-color: #f56c6c;
   background-color: #fef0f0;
-  font-size: 6px;
 }
 
 .calendar-item.buy:hover {
@@ -767,7 +903,6 @@ onMounted(() => {
 .calendar-item.sell {
   border-left-color: #67c23a;
   background-color: #f0f9ff;
-
 }
 
 .calendar-item.sell:hover {
@@ -794,7 +929,6 @@ onMounted(() => {
 .item-main .direction-tag :deep(.el-tag__content) {
   font-size: 10px;
   font-weight: 600;
-  line-height: 1.2;
 }
 
 .item-main .strategy-tag {
@@ -805,7 +939,6 @@ onMounted(() => {
 .item-main .strategy-tag :deep(.el-tag__content) {
   font-size: 10px;
   font-weight: 600;
-  line-height: 1.2;
 }
 
 .item-stock {
@@ -818,6 +951,16 @@ onMounted(() => {
   font-size: 10px;
   color: #909399;
   margin-top: 0px;
+}
+
+.more-items-tip {
+  font-size: 10px;
+  color: #909399;
+  text-align: center;
+  padding: 2px 0;
+  margin-top: 2px;
+  font-style: italic;
+  border-top: 1px dashed #dcdfe6;
 }
 
 .table-view {

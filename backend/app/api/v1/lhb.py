@@ -21,6 +21,10 @@ from app.schemas.lhb import (
     LhbInstitutionItemResponse,
     LhbHotInstitutionDetailResponse,
     TraderResponse,
+    TraderCreateRequest,
+    TraderUpdateRequest,
+    TraderBranchResponse,
+    TraderBranchCreateRequest,
 )
 from app.utils.date_utils import parse_date
 from app.config import settings
@@ -370,6 +374,147 @@ def lookup_trader(
         institution_name=institution_name,
     )
     return trader
+
+
+@router.get("/traders/{trader_id}", response_model=TraderResponse)
+def get_trader(trader_id: int, db: Session = Depends(get_db)):
+    """获取游资详情"""
+    trader = TraderService.get_trader_by_id(db, trader_id)
+    if not trader:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="游资不存在")
+    return trader
+
+
+@router.post("/traders", response_model=TraderResponse, status_code=201)
+def create_trader(
+    request: TraderCreateRequest,
+    db: Session = Depends(get_db)
+):
+    """创建游资"""
+    try:
+        trader = TraderService.create_trader(
+            db=db,
+            name=request.name,
+            aka=request.aka,
+            branch_names=request.branches
+        )
+        return trader
+    except ValueError as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=f"创建游资失败: {str(e)}")
+
+
+@router.put("/traders/{trader_id}", response_model=TraderResponse)
+def update_trader(
+    trader_id: int,
+    request: TraderUpdateRequest,
+    db: Session = Depends(get_db)
+):
+    """更新游资"""
+    try:
+        trader = TraderService.update_trader(
+            db=db,
+            trader_id=trader_id,
+            name=request.name,
+            aka=request.aka
+        )
+        if not trader:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="游资不存在")
+        return trader
+    except ValueError as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=f"更新游资失败: {str(e)}")
+
+
+@router.delete("/traders/{trader_id}", status_code=204)
+def delete_trader(trader_id: int, db: Session = Depends(get_db)):
+    """删除游资"""
+    success = TraderService.delete_trader(db, trader_id)
+    if not success:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="游资不存在")
+    return None
+
+
+@router.post("/traders/{trader_id}/branches", response_model=TraderBranchResponse, status_code=201)
+def add_trader_branch(
+    trader_id: int,
+    request: TraderBranchCreateRequest,
+    db: Session = Depends(get_db)
+):
+    """为游资添加机构关联"""
+    branch = TraderService.add_branch(
+        db=db,
+        trader_id=trader_id,
+        institution_name=request.institution_name,
+        institution_code=request.institution_code
+    )
+    if not branch:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="游资不存在")
+    return branch
+
+
+@router.put("/traders/{trader_id}/branches/{branch_id}", response_model=TraderBranchResponse)
+def update_trader_branch(
+    trader_id: int,
+    branch_id: int,
+    request: TraderBranchCreateRequest,
+    db: Session = Depends(get_db)
+):
+    """更新游资机构关联"""
+    try:
+        branch = TraderService.update_branch(
+            db=db,
+            branch_id=branch_id,
+            institution_name=request.institution_name,
+            institution_code=request.institution_code
+        )
+        if not branch:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="机构关联不存在")
+        # 验证branch属于指定的trader
+        if branch.trader_id != trader_id:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="机构关联不属于指定的游资")
+        return branch
+    except ValueError as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=f"更新机构关联失败: {str(e)}")
+
+
+@router.delete("/traders/{trader_id}/branches/{branch_id}", status_code=204)
+def delete_trader_branch(
+    trader_id: int,
+    branch_id: int,
+    db: Session = Depends(get_db)
+):
+    """删除游资机构关联"""
+    # 先验证branch是否存在且属于指定的trader
+    branch = db.query(TraderBranch).filter(
+        TraderBranch.id == branch_id,
+        TraderBranch.trader_id == trader_id
+    ).first()
+    if not branch:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="机构关联不存在或不属于指定的游资")
+    
+    success = TraderService.delete_branch(db, branch_id)
+    if not success:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="机构关联不存在")
+    return None
 
 
 @router.get("/{stock_code}", response_model=LhbDetailFullResponse)

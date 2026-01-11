@@ -22,6 +22,16 @@ class TraderService:
         return db.query(Trader).options(joinedload(Trader.branches)).all()
     
     @staticmethod
+    def get_trader_by_id(db: Session, trader_id: int) -> Optional[Trader]:
+        """根据ID获取游资"""
+        return db.query(Trader).options(joinedload(Trader.branches)).filter(Trader.id == trader_id).first()
+    
+    @staticmethod
+    def get_trader_by_name(db: Session, name: str) -> Optional[Trader]:
+        """根据名称获取游资"""
+        return db.query(Trader).filter(Trader.name == name).first()
+    
+    @staticmethod
     def get_trader_by_institution(
         db: Session,
         institution_code: Optional[str] = None,
@@ -35,6 +45,160 @@ class TraderService:
         if institution_name:
             query = query.filter(TraderBranch.institution_name == institution_name)
         return query.first()
+    
+    @staticmethod
+    def create_trader(
+        db: Session,
+        name: str,
+        aka: Optional[str] = None,
+        branch_names: Optional[List[str]] = None
+    ) -> Trader:
+        """创建游资"""
+        # 检查名称是否已存在
+        existing = TraderService.get_trader_by_name(db, name)
+        if existing:
+            raise ValueError(f"游资名称 '{name}' 已存在")
+        
+        trader = Trader(name=name, aka=aka)
+        db.add(trader)
+        db.flush()  # 获取trader.id
+        
+        # 添加机构关联
+        if branch_names:
+            for branch_name in branch_names:
+                branch_name = branch_name.strip()
+                if branch_name:
+                    # 检查是否已存在
+                    existing_branch = db.query(TraderBranch).filter(
+                        TraderBranch.trader_id == trader.id,
+                        TraderBranch.institution_name == branch_name
+                    ).first()
+                    
+                    if not existing_branch:
+                        branch = TraderBranch(
+                            trader_id=trader.id,
+                            institution_name=branch_name,
+                            institution_code=None
+                        )
+                        db.add(branch)
+        
+        db.commit()
+        db.refresh(trader)
+        return trader
+    
+    @staticmethod
+    def update_trader(
+        db: Session,
+        trader_id: int,
+        name: Optional[str] = None,
+        aka: Optional[str] = None
+    ) -> Optional[Trader]:
+        """更新游资"""
+        trader = TraderService.get_trader_by_id(db, trader_id)
+        if not trader:
+            return None
+        
+        # 如果更新名称，检查是否与其他游资冲突
+        if name and name != trader.name:
+            existing = TraderService.get_trader_by_name(db, name)
+            if existing:
+                raise ValueError(f"游资名称 '{name}' 已存在")
+            trader.name = name
+        
+        if aka is not None:
+            trader.aka = aka
+        
+        db.commit()
+        db.refresh(trader)
+        return trader
+    
+    @staticmethod
+    def delete_trader(db: Session, trader_id: int) -> bool:
+        """删除游资（级联删除关联的branch）"""
+        trader = TraderService.get_trader_by_id(db, trader_id)
+        if not trader:
+            return False
+        
+        db.delete(trader)
+        db.commit()
+        return True
+    
+    @staticmethod
+    def add_branch(
+        db: Session,
+        trader_id: int,
+        institution_name: str,
+        institution_code: Optional[str] = None
+    ) -> Optional[TraderBranch]:
+        """为游资添加机构关联"""
+        trader = TraderService.get_trader_by_id(db, trader_id)
+        if not trader:
+            return None
+        
+        # 检查是否已存在
+        existing = db.query(TraderBranch).filter(
+            TraderBranch.trader_id == trader_id,
+            TraderBranch.institution_name == institution_name
+        ).first()
+        
+        if existing:
+            # 更新代码（如果提供了）
+            if institution_code and not existing.institution_code:
+                existing.institution_code = institution_code
+                db.commit()
+                db.refresh(existing)
+            return existing
+        
+        branch = TraderBranch(
+            trader_id=trader_id,
+            institution_name=institution_name,
+            institution_code=institution_code
+        )
+        db.add(branch)
+        db.commit()
+        db.refresh(branch)
+        return branch
+    
+    @staticmethod
+    def delete_branch(db: Session, branch_id: int) -> bool:
+        """删除机构关联"""
+        branch = db.query(TraderBranch).filter(TraderBranch.id == branch_id).first()
+        if not branch:
+            return False
+        
+        db.delete(branch)
+        db.commit()
+        return True
+    
+    @staticmethod
+    def update_branch(
+        db: Session,
+        branch_id: int,
+        institution_name: Optional[str] = None,
+        institution_code: Optional[str] = None
+    ) -> Optional[TraderBranch]:
+        """更新机构关联"""
+        branch = db.query(TraderBranch).filter(TraderBranch.id == branch_id).first()
+        if not branch:
+            return None
+        
+        if institution_name is not None:
+            # 检查是否与其他关联冲突
+            existing = db.query(TraderBranch).filter(
+                TraderBranch.trader_id == branch.trader_id,
+                TraderBranch.institution_name == institution_name,
+                TraderBranch.id != branch_id
+            ).first()
+            if existing:
+                raise ValueError(f"该游资已存在机构 '{institution_name}'")
+            branch.institution_name = institution_name
+        
+        if institution_code is not None:
+            branch.institution_code = institution_code
+        
+        db.commit()
+        db.refresh(branch)
+        return branch
     
     @staticmethod
     def sync_branch_history(db: Session, target_date: Optional[date] = None) -> bool:

@@ -32,5 +32,6 @@ redis>=5.0.1
 # 工具库
 python-dateutil>=2.8.2
 
-# CloudBase 云函数适配器
+# Google Cloud Functions 适配器
 mangum>=0.17.0
+functions-framework>=3.5.0

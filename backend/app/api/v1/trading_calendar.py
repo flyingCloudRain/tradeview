@@ -10,7 +10,7 @@ import math
 import os
 import uuid
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 from app.database.session import get_db
 from app.services.trading_calendar_service import TradingCalendarService
@@ -42,6 +42,8 @@ def get_trading_calendar_list(
     direction: Optional[str] = Query(None, description="操作方向：买入/卖出"),
     strategy: Optional[str] = Query(None, description="策略：低吸/排板"),
     source: Optional[str] = Query(None, description="来源"),
+    concept_ids: Optional[str] = Query(None, description="概念板块ID列表（逗号分隔，如：1,2,3）"),
+    concept_names: Optional[str] = Query(None, description="概念板块名称列表（逗号分隔，如：人工智能,新能源）"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(settings.DEFAULT_PAGE_SIZE, ge=1, le=settings.MAX_PAGE_SIZE, description="每页数量"),
     sort_by: Optional[str] = Query(None, description="排序字段"),
@@ -49,8 +51,25 @@ def get_trading_calendar_list(
     db: Session = Depends(get_db)
 ):
     """获取交易日历列表"""
-    start_date_obj = parse_date(start_date) if start_date else None
-    end_date_obj = parse_date(end_date) if end_date else None
+    # 如果没有提供日期范围，默认使用最近1个月
+    if not start_date and not end_date:
+        end_date_obj = date.today()
+        start_date_obj = end_date_obj - timedelta(days=30)
+    else:
+        start_date_obj = parse_date(start_date) if start_date else None
+        end_date_obj = parse_date(end_date) if end_date else None
+    
+    # 解析概念板块参数
+    concept_ids_list = None
+    if concept_ids:
+        try:
+            concept_ids_list = [int(x.strip()) for x in concept_ids.split(',') if x.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="概念板块ID格式错误")
+    
+    concept_names_list = None
+    if concept_names:
+        concept_names_list = [x.strip() for x in concept_names.split(',') if x.strip()]
     
     items, total = TradingCalendarService.get_list(
         db=db,
@@ -60,11 +79,20 @@ def get_trading_calendar_list(
         direction=direction,
         strategy=strategy,
         source=source,
+        concept_ids=concept_ids_list,
+        concept_names=concept_names_list,
         page=page,
         page_size=page_size,
         sort_by=sort_by,
         order=order if order in ("asc", "desc") else "desc",
     )
+    
+    # 为每个记录加载概念板块
+    from app.services.stock_concept_service import StockConceptService
+    for item in items:
+        concepts = TradingCalendarService.get_concepts_for_calendar(db, item)
+        # 将概念板块添加到响应对象（通过动态属性）
+        item._concepts = concepts
     
     total_pages = math.ceil(total / page_size) if total > 0 else 0
     
@@ -216,4 +244,84 @@ async def get_image(filename: str):
         raise HTTPException(status_code=403, detail="禁止访问")
     
     return FileResponse(file_path)
+
+
+# 交易日历概念板块关联API
+@router.post("/{calendar_id}/concepts")
+def add_concepts_to_calendar(
+    calendar_id: int,
+    concept_ids: List[int] = Body(..., description="概念板块ID列表"),
+    db: Session = Depends(get_db)
+):
+    """为交易日历添加概念板块（替换所有现有关联）"""
+    from app.services.stock_concept_service import TradingCalendarConceptService
+    
+    concepts = TradingCalendarConceptService.set_concepts_for_calendar(
+        db=db,
+        calendar_id=calendar_id,
+        concept_ids=concept_ids
+    )
+    
+    if not concepts and concept_ids:
+        # 检查交易日历是否存在
+        calendar = TradingCalendarService.get_by_id(db, calendar_id)
+        if not calendar:
+            raise HTTPException(status_code=404, detail="交易日历不存在")
+    
+    return {
+        "trading_calendar_id": calendar_id,
+        "concepts": [
+            {"id": c.id, "name": c.name, "code": c.code}
+            for c in concepts
+        ]
+    }
+
+
+@router.put("/{calendar_id}/concepts")
+def update_calendar_concepts(
+    calendar_id: int,
+    concept_ids: List[int] = Body(..., description="概念板块ID列表（替换所有关联）"),
+    db: Session = Depends(get_db)
+):
+    """更新交易日历的概念板块（替换所有现有关联）"""
+    from app.services.stock_concept_service import TradingCalendarConceptService
+    
+    concepts = TradingCalendarConceptService.set_concepts_for_calendar(
+        db=db,
+        calendar_id=calendar_id,
+        concept_ids=concept_ids
+    )
+    
+    # 检查交易日历是否存在
+    calendar = TradingCalendarService.get_by_id(db, calendar_id)
+    if not calendar:
+        raise HTTPException(status_code=404, detail="交易日历不存在")
+    
+    return {
+        "trading_calendar_id": calendar_id,
+        "concepts": [
+            {"id": c.id, "name": c.name, "code": c.code}
+            for c in concepts
+        ]
+    }
+
+
+@router.delete("/{calendar_id}/concepts/{concept_id}", status_code=204)
+def remove_concept_from_calendar(
+    calendar_id: int,
+    concept_id: int,
+    db: Session = Depends(get_db)
+):
+    """删除交易日历的概念板块关联"""
+    from app.services.stock_concept_service import TradingCalendarConceptService
+    
+    success = TradingCalendarConceptService.remove_concept_from_calendar(
+        db=db,
+        calendar_id=calendar_id,
+        concept_id=concept_id
+    )
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="关联关系不存在")
+    return None
 

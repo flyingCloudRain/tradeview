@@ -32,6 +32,13 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      - name: Install Python Dependencies
+        working-directory: ./backend
+        run: |
+          echo "安装 Python 依赖..."
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
       - name: Install CloudBase CLI
         run: |
           npm install -g @cloudbase/cli
@@ -39,25 +46,101 @@ jobs:
       - name: Configure CloudBase Authentication
         run: |
           echo "配置 CloudBase 认证..."
-          # 创建认证配置目录
           mkdir -p ~/.tcb
           
-          # 如果提供了密钥，尝试配置
-          if [ -n "$TCB_SECRET_ID" ] && [ -n "$TCB_SECRET_KEY" ]; then
-            echo "配置密钥信息..."
-            # 注意：CloudBase CLI 的实际认证方式可能需要根据版本调整
-            # 可能需要使用 cloudbase login 命令配合密钥
-            echo "TCB_SECRET_ID 和 TCB_SECRET_KEY 已设置"
+          # 使用自定义登录密钥（推荐方式）
+          if [ -n "$CLOUDBASE_PRIVATE_KEY" ] && [ -n "$CLOUDBASE_ENV_ID" ]; then
+            echo "使用自定义登录密钥..."
+            # 使用 Python 创建 JSON 文件（正确处理换行符）
+            python3 << 'PYTHONEOF'
+          import json
+          import os
+          
+          key_data = {
+            "private_key_id": os.environ.get("CLOUDBASE_PRIVATE_KEY_ID", ""),
+            "private_key": os.environ.get("CLOUDBASE_PRIVATE_KEY", "").replace("\\n", "\n"),
+            "env_id": os.environ.get("CLOUDBASE_ENV_ID", "")
+          }
+          
+          os.makedirs(os.path.expanduser("~/.tcb"), exist_ok=True)
+          key_file = os.path.expanduser("~/.tcb/custom_login_key.json")
+          with open(key_file, "w") as f:
+            json.dump(key_data, f, indent=2)
+          
+          print(f"✅ 自定义密钥文件已创建: {key_file}")
+          PYTHONEOF
+            # 使用自定义密钥登录
+            echo "尝试使用自定义密钥登录..."
+            cloudbase login --key ~/.tcb/custom_login_key.json || {
+              echo "⚠️  自定义密钥登录失败，尝试其他方式..."
+            }
           fi
           
-          # 重要提示：CloudBase CLI 在 CI/CD 中的认证方式
-          # 1. 可能需要预先在本地登录并导出 token
-          # 2. 或使用 cloudbase login --key 命令（如果支持）
-          # 3. 或使用环境变量配置（如果 CLI 支持）
-          echo "请根据 CloudBase CLI 版本配置认证方式"
+          # 备用方案：使用 SecretId 和 SecretKey
+          if [ -n "$TCB_SECRET_ID" ] && [ -n "$TCB_SECRET_KEY" ]; then
+            echo "使用 SecretId/SecretKey 登录..."
+            python3 << 'PYTHONEOF'
+          import json
+          import os
+          
+          login_data = {
+            "secretId": os.environ.get("TCB_SECRET_ID", ""),
+            "secretKey": os.environ.get("TCB_SECRET_KEY", "")
+          }
+          
+          os.makedirs(os.path.expanduser("~/.tcb"), exist_ok=True)
+          login_file = os.path.expanduser("~/.tcb/login.json")
+          with open(login_file, "w") as f:
+            json.dump(login_data, f, indent=2)
+          
+          print(f"✅ 登录配置文件已创建: {login_file}")
+          PYTHONEOF
+            cloudbase login --key ~/.tcb/login.json || echo "登录方式需要调整"
+          fi
+          
+          # 验证登录状态
+          echo "验证 CloudBase 登录状态..."
+          cloudbase env:list || echo "⚠️  登录验证失败，请检查密钥配置"
         env:
+          CLOUDBASE_ENV_ID: ${{ secrets.CLOUDBASE_ENV_ID }}
+          CLOUDBASE_PRIVATE_KEY_ID: ${{ secrets.CLOUDBASE_PRIVATE_KEY_ID }}
+          CLOUDBASE_PRIVATE_KEY: ${{ secrets.CLOUDBASE_PRIVATE_KEY }}
           TCB_SECRET_ID: ${{ secrets.TCB_SECRET_ID }}
           TCB_SECRET_KEY: ${{ secrets.TCB_SECRET_KEY }}
+
+      - name: Run Database Migrations
+        working-directory: ./backend
+        run: |
+          echo "=========================================="
+          echo "运行数据库迁移"
+          echo "=========================================="
+          
+          if [ -z "$DATABASE_URL" ]; then
+            echo "⚠️  警告: DATABASE_URL 未设置，跳过数据库迁移"
+            echo "请在 GitHub Secrets 中配置 DATABASE_URL"
+            echo "格式: postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres"
+            exit 0
+          fi
+          
+          echo "数据库连接: ${DATABASE_URL%%@*}@***"  # 隐藏密码
+          
+          echo ""
+          echo "检查当前数据库版本..."
+          alembic current || echo "数据库可能尚未初始化"
+          
+          echo ""
+          echo "执行数据库迁移..."
+          alembic upgrade head
+          
+          echo ""
+          echo "验证迁移结果..."
+          alembic current
+          
+          echo ""
+          echo "✅ 数据库迁移完成"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        continue-on-error: false  # 迁移失败则停止部署
 
       - name: Build Frontend
         working-directory: ./frontend
@@ -107,6 +190,8 @@ jobs:
           echo "## 🚀 部署完成" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**环境 ID**: ${{ secrets.CLOUDBASE_ENV_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**数据库迁移**: $([ -n '${{ secrets.DATABASE_URL }}' ] && echo '✅ 已执行' || echo '⚠️  未配置 DATABASE_URL')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**访问地址**:">> $GITHUB_STEP_SUMMARY
           echo "- 前端: https://${{ secrets.CLOUDBASE_ENV_ID }}.tcloudbaseapp.com" >> $GITHUB_STEP_SUMMARY

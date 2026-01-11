@@ -8,6 +8,7 @@ from datetime import date
 import math
 
 from app.models.trading_calendar import TradingCalendar
+from app.models.stock_concept import StockConceptMapping, TradingCalendarConcept
 from app.config import settings
 
 
@@ -23,6 +24,8 @@ class TradingCalendarService:
         direction: Optional[str] = None,
         strategy: Optional[str] = None,
         source: Optional[str] = None,
+        concept_ids: Optional[List[int]] = None,
+        concept_names: Optional[List[str]] = None,
         page: int = 1,
         page_size: int = 20,
         sort_by: Optional[str] = None,
@@ -57,6 +60,58 @@ class TradingCalendarService:
             source_clean = source.strip()
             query = query.filter(TradingCalendar.source == source_clean)
         
+        # 概念板块过滤
+        if concept_ids or concept_names:
+            # 构建子查询：获取符合概念板块条件的股票名称
+            from app.models.stock_concept import StockConcept
+            
+            concept_subquery = db.query(StockConceptMapping.stock_name).distinct()
+            
+            if concept_ids:
+                concept_subquery = concept_subquery.filter(
+                    StockConceptMapping.concept_id.in_(concept_ids)
+                )
+            
+            if concept_names:
+                concept_subquery = concept_subquery.join(
+                    StockConcept,
+                    StockConceptMapping.concept_id == StockConcept.id
+                ).filter(
+                    StockConcept.name.in_(concept_names)
+                )
+            
+            # 同时检查交易日历专用关联表
+            calendar_concept_subquery = db.query(TradingCalendarConcept.trading_calendar_id).distinct()
+            
+            if concept_ids:
+                calendar_concept_subquery = calendar_concept_subquery.filter(
+                    TradingCalendarConcept.concept_id.in_(concept_ids)
+                )
+            
+            if concept_names:
+                calendar_concept_subquery = calendar_concept_subquery.join(
+                    StockConcept,
+                    TradingCalendarConcept.concept_id == StockConcept.id
+                ).filter(
+                    StockConcept.name.in_(concept_names)
+                )
+            
+            # 合并两个条件：股票名称匹配或交易日历ID匹配
+            stock_names = [row[0] for row in concept_subquery.all()]
+            calendar_ids = [row[0] for row in calendar_concept_subquery.all()]
+            
+            if stock_names or calendar_ids:
+                from sqlalchemy import or_
+                conditions = []
+                if stock_names:
+                    conditions.append(TradingCalendar.stock_name.in_(stock_names))
+                if calendar_ids:
+                    conditions.append(TradingCalendar.id.in_(calendar_ids))
+                query = query.filter(or_(*conditions))
+            else:
+                # 如果没有匹配的概念板块，返回空结果
+                query = query.filter(TradingCalendar.id == -1)
+        
         # 排序
         if sort_by:
             sort_column = getattr(TradingCalendar, sort_by, None)
@@ -66,11 +121,27 @@ class TradingCalendarService:
                 else:
                     query = query.order_by(asc(sort_column))
             else:
-                # 默认按日期倒序
-                query = query.order_by(desc(TradingCalendar.date), desc(TradingCalendar.id))
+                # 默认排序：日期倒序，然后按来源、操作方向、策略、个股
+                # 使用 coalesce 处理 NULL 值，确保 NULL 排在最后
+                query = query.order_by(
+                    TradingCalendar.date.desc(),  # 日期倒序（最新在前）
+                    func.coalesce(TradingCalendar.source, 'zzz').asc(),  # NULL 值用 'zzz' 替代，确保排在最后
+                    TradingCalendar.direction.asc(),
+                    TradingCalendar.strategy.asc(),
+                    TradingCalendar.stock_name.asc(),
+                    TradingCalendar.id.desc()
+                )
         else:
-            # 默认按日期倒序
-            query = query.order_by(desc(TradingCalendar.date), desc(TradingCalendar.id))
+            # 默认排序：日期倒序，然后按来源、操作方向、策略、个股
+            # 使用 coalesce 处理 NULL 值，确保 NULL 排在最后
+            query = query.order_by(
+                TradingCalendar.date.desc(),  # 日期倒序（最新在前）
+                func.coalesce(TradingCalendar.source, 'zzz').asc(),  # NULL 值用 'zzz' 替代，确保排在最后
+                TradingCalendar.direction.asc(),
+                TradingCalendar.strategy.asc(),
+                TradingCalendar.stock_name.asc(),
+                TradingCalendar.id.desc()
+            )
         
         # 总数
         total = query.count()
@@ -85,6 +156,30 @@ class TradingCalendarService:
     def get_by_id(db: Session, calendar_id: int) -> Optional[TradingCalendar]:
         """根据ID获取交易日历"""
         return db.query(TradingCalendar).filter(TradingCalendar.id == calendar_id).first()
+    
+    @staticmethod
+    def get_concepts_for_calendar(db: Session, calendar: TradingCalendar) -> List:
+        """获取交易日历的概念板块列表（优先使用记录级关联，其次使用股票名称关联）"""
+        from app.models.stock_concept import StockConcept
+        
+        # 1. 先查询记录级别的概念板块关联
+        record_concepts = db.query(StockConcept).join(
+            TradingCalendarConcept,
+            StockConcept.id == TradingCalendarConcept.concept_id
+        ).filter(
+            TradingCalendarConcept.trading_calendar_id == calendar.id
+        ).all()
+        
+        if record_concepts:
+            return record_concepts
+        
+        # 2. 如果没有记录级别的关联，使用股票名称的通用关联
+        return db.query(StockConcept).join(
+            StockConceptMapping,
+            StockConcept.id == StockConceptMapping.concept_id
+        ).filter(
+            StockConceptMapping.stock_name == calendar.stock_name
+        ).all()
     
     @staticmethod
     def create(db: Session, calendar_data: dict) -> TradingCalendar:

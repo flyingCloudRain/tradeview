@@ -145,3 +145,22 @@ class TraderResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class TraderCreateRequest(BaseModel):
+    """创建游资请求"""
+    name: str = Field(..., description="游资名称", min_length=1, max_length=200)
+    aka: Optional[str] = Field(None, description="游资说明/别名", max_length=1000)
+    branches: List[str] = Field(default_factory=list, description="关联机构名称列表")
+
+
+class TraderUpdateRequest(BaseModel):
+    """更新游资请求"""
+    name: Optional[str] = Field(None, description="游资名称", min_length=1, max_length=200)
+    aka: Optional[str] = Field(None, description="游资说明/别名", max_length=1000)
+
+
+class TraderBranchCreateRequest(BaseModel):
+    """创建游资机构关联请求"""
+    institution_name: str = Field(..., description="机构名称", min_length=1, max_length=200)
+    institution_code: Optional[str] = Field(None, description="机构代码", max_length=50)
+

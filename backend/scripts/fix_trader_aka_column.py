@@ -37,25 +37,10 @@ def fix_trader_aka_column():
             print("\n✅ aka 列已存在，无需修复")
             return True
         
-        # 获取数据库类型
-        db_url = str(engine.url)
-        is_postgresql = 'postgresql' in db_url or 'postgres' in db_url
-        is_sqlite = 'sqlite' in db_url
-        
-        print(f"\n🔧 数据库类型: {'PostgreSQL' if is_postgresql else 'SQLite' if is_sqlite else 'Unknown'}")
-        
-        # 添加列
-        if is_postgresql:
-            print("\n添加 aka 列（PostgreSQL）...")
-            db.execute(text("ALTER TABLE trader ADD COLUMN IF NOT EXISTS aka TEXT"))
-            db.execute(text("COMMENT ON COLUMN trader.aka IS '描述'"))
-        elif is_sqlite:
-            print("\n添加 aka 列（SQLite）...")
-            # SQLite 不支持 IF NOT EXISTS，需要先检查
-            db.execute(text("ALTER TABLE trader ADD COLUMN aka TEXT"))
-        else:
-            print("\n⚠️  未知数据库类型，尝试通用 SQL...")
-            db.execute(text("ALTER TABLE trader ADD COLUMN aka TEXT"))
+        # 添加列（PostgreSQL）
+        print("\n添加 aka 列（PostgreSQL）...")
+        db.execute(text("ALTER TABLE trader ADD COLUMN IF NOT EXISTS aka TEXT"))
+        db.execute(text("COMMENT ON COLUMN trader.aka IS '描述'"))
         
         db.commit()
         print("✅ 已成功添加 aka 列")

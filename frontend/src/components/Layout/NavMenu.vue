@@ -31,7 +31,7 @@
     </el-menu-item>
     <el-menu-item index="/trader">
       <el-icon><User /></el-icon>
-      <span>机构映射</span>
+      <span>游资机构</span>
     </el-menu-item>
     <el-menu-item index="/trading-calendar">
       <el-icon><Calendar /></el-icon>

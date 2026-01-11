@@ -39,12 +39,6 @@ ALTER TABLE trader ADD COLUMN IF NOT EXISTS aka TEXT;
 COMMENT ON COLUMN trader.aka IS '描述';
 ```
 
-**SQLite:**
-```sql
--- SQLite 不支持 IF NOT EXISTS，需要先检查
--- 如果列不存在，添加列
-ALTER TABLE trader ADD COLUMN aka TEXT;
-```
 
 ### 方法三：使用 Python 脚本修复
 

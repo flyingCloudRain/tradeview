@@ -25,6 +25,7 @@ class ZtPoolService:
         concept: Optional[str] = None,
         industry: Optional[str] = None,
         consecutive_limit_count: Optional[int] = None,
+        is_lhb: Optional[bool] = None,
         page: int = 1,
         page_size: int = 20,
         sort_by: Optional[str] = None,
@@ -32,6 +33,9 @@ class ZtPoolService:
     ) -> tuple[List[ZtPool], int]:
         """
         获取涨停池列表
+        
+        Args:
+            is_lhb: 是否龙虎榜筛选，True表示只返回龙虎榜股票，False表示只返回非龙虎榜股票，None表示不筛选
         """
         query = db.query(ZtPool).filter(ZtPool.date == target_date)
         
@@ -46,6 +50,26 @@ class ZtPoolService:
         
         if consecutive_limit_count is not None:
             query = query.filter(ZtPool.consecutive_limit_count == consecutive_limit_count)
+        
+        # 是否龙虎榜筛选
+        if is_lhb is not None:
+            # 查询当日所有龙虎榜股票代码
+            lhb_stock_codes_query = db.query(LhbDetail.stock_code).filter(
+                LhbDetail.date == target_date
+            ).distinct()
+            lhb_stock_codes = {row[0] for row in lhb_stock_codes_query.all()}
+            
+            if is_lhb:
+                # 只返回在龙虎榜中的股票
+                if lhb_stock_codes:
+                    query = query.filter(ZtPool.stock_code.in_(lhb_stock_codes))
+                else:
+                    # 如果没有龙虎榜数据，返回空结果
+                    query = query.filter(ZtPool.id == -1)
+            else:
+                # 只返回不在龙虎榜中的股票
+                if lhb_stock_codes:
+                    query = query.filter(~ZtPool.stock_code.in_(lhb_stock_codes))
         
         # 排序
         if sort_by:

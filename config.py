@@ -12,10 +12,10 @@ load_dotenv()
 BASE_DIR = Path(__file__).parent
 
 # 数据库配置
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    f"sqlite:///{BASE_DIR / 'data' / 'trading_review.db'}"
-)
+# 必须通过环境变量设置 DATABASE_URL
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is required")
 
 # 数据目录
 DATA_DIR = BASE_DIR / "data"

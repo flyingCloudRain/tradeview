@@ -25,6 +25,36 @@
                 clearable
                 style="width: 200px"
               />
+              <el-input
+                v-model="limitUpStatistics"
+                placeholder="板数（如：首板、1、2、2/3）"
+                clearable
+                style="width: 200px"
+              />
+              <el-select
+                v-model="selectedConceptIds"
+                multiple
+                filterable
+                placeholder="选择概念"
+                clearable
+                style="width: 300px"
+              >
+                <el-option
+                  v-for="concept in conceptList"
+                  :key="concept.id"
+                  :label="concept.name"
+                  :value="concept.id"
+                />
+              </el-select>
+              <el-select
+                v-model="isLhb"
+                placeholder="是否龙虎榜"
+                clearable
+                style="width: 150px"
+              >
+                <el-option label="是" :value="true" />
+                <el-option label="否" :value="false" />
+              </el-select>
               <el-button type="primary" @click="handleSearch" :loading="loading">
                 查询
               </el-button>
@@ -45,6 +75,11 @@
                   <span :style="{ color: row.change_percent > 0 ? 'red' : 'green' }">
                     {{ formatPercent(row.change_percent) }}
                   </span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="limit_up_statistics" label="板数" width="100" align="center">
+                <template #default="{ row }">
+                  <span>{{ formatLimitUpStatistics(row.limit_up_statistics) }}</span>
                 </template>
               </el-table-column>
               <el-table-column prop="is_lhb" label="龙虎榜" width="100" align="center">
@@ -148,6 +183,21 @@
                 clearable
                 style="width: 200px"
               />
+              <el-select
+                v-model="selectedConceptIds"
+                multiple
+                filterable
+                placeholder="选择概念"
+                clearable
+                style="width: 300px"
+              >
+                <el-option
+                  v-for="concept in conceptList"
+                  :key="concept.id"
+                  :label="concept.name"
+                  :value="concept.id"
+                />
+              </el-select>
               <el-button type="primary" @click="handleSearch" :loading="loading">
                 查询
               </el-button>
@@ -195,14 +245,14 @@
                   </el-select>
                   <div v-else class="concept-tags">
                     <el-tag
-                      v-for="(concept, idx) in getConceptList(row.concept)"
+                      v-for="(concept, idx) in getConceptDisplayList(row)"
                       :key="idx"
                       size="small"
                       style="margin-right: 4px; margin-bottom: 4px"
                     >
                       {{ concept }}
                     </el-tag>
-                    <span v-if="!row.concept || getConceptList(row.concept).length === 0" style="color: #909399">
+                    <span v-if="getConceptDisplayList(row).length === 0" style="color: #909399">
                       无
                     </span>
                   </div>
@@ -248,6 +298,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useZtPoolStore } from '@/stores/ztPool'
 import { ztPoolApi } from '@/api/ztPool'
+import { stockConceptApi, type StockConcept } from '@/api/stockConcept'
 import dayjs from 'dayjs'
 import { formatPercent } from '@/utils/format'
 import { ElMessage } from 'element-plus'
@@ -256,11 +307,15 @@ const ztPoolStore = useZtPoolStore()
 
 const date = ref(dayjs().format('YYYY-MM-DD'))
 const stockCode = ref('')
+const limitUpStatistics = ref('')
+const selectedConceptIds = ref<number[]>([])
+const isLhb = ref<boolean | undefined>(undefined)
 const activeType = computed({
   get: () => ztPoolStore.activeType,
   set: (v) => ztPoolStore.setActiveType(v as 'up' | 'down'),
 })
 const conceptOptions = ref<string[]>([])
+const conceptList = ref<StockConcept[]>([])
 
 const tableData = computed(() => ztPoolStore.list)
 const loading = computed(() => ztPoolStore.loading)
@@ -275,6 +330,9 @@ const fetchData = async () => {
   await ztPoolStore.fetchList({
     date: date.value,
     stock_code: stockCode.value || undefined,
+    limit_up_statistics: limitUpStatistics.value || undefined,
+    concept_ids: selectedConceptIds.value.length > 0 ? selectedConceptIds.value : undefined,
+    is_lhb: isLhb.value,
   })
 }
 
@@ -342,14 +400,35 @@ const loadConceptOptions = async () => {
   }
 }
 
+const loadConceptList = async () => {
+  try {
+    const response = await stockConceptApi.getList({ page_size: 1000 })
+    conceptList.value = response.items
+  } catch (e) {
+    console.error('加载概念板块列表失败:', e)
+    ElMessage.error('加载概念板块列表失败')
+  }
+}
+
 onMounted(() => {
   fetchData()
   loadConceptOptions()
+  loadConceptList()
 })
 
 const handleTypeChange = () => {
   ztPoolStore.setPagination(1, pagination.value.pageSize)
   fetchData()
+}
+
+// 获取概念显示列表（优先使用 concepts 数组，否则解析 concept 文本字段）
+const getConceptDisplayList = (row: any): string[] => {
+  // 优先使用 concepts 数组（概念板块关联数据）
+  if (row.concepts && Array.isArray(row.concepts) && row.concepts.length > 0) {
+    return row.concepts.map((c: any) => c.name || c)
+  }
+  // 回退到解析 concept 文本字段（兼容旧数据）
+  return getConceptList(row.concept)
 }
 
 // 解析概念字符串为数组（支持逗号、空格分隔）
@@ -359,6 +438,29 @@ const getConceptList = (conceptStr: string | null | undefined): string[] => {
     .split(/[,，\s]+/)
     .map((c) => c.trim())
     .filter((c) => c.length > 0)
+}
+
+// 格式化涨停统计字段
+const formatLimitUpStatistics = (statistics: string | null | undefined): string => {
+  if (!statistics) return '-'
+  
+  // 匹配 ?/? 格式（例如：1/1, 2/3, 5/10 等）
+  const match = statistics.match(/^(\d+)\/(\d+)$/)
+  if (match) {
+    const days = parseInt(match[1])
+    const boards = parseInt(match[2])
+    
+    // 如果是 1/1，显示"首板"
+    if (days === 1 && boards === 1) {
+      return '首板'
+    }
+    
+    // 其他情况显示 "?天/?板"
+    return `${days}天/${boards}板`
+  }
+  
+  // 如果格式不匹配，直接返回原值
+  return statistics
 }
 </script>
 

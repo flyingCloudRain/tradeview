@@ -13,7 +13,7 @@ class TradingCalendarBase(BaseModel):
     date: dt_date
     stock_name: str = Field(..., min_length=1, max_length=50, description="股票名称")
     direction: str = Field(..., description="操作方向：买入/卖出")
-    strategy: str = Field(..., description="策略：低吸/排板")
+    strategy: str = Field(..., description="策略：低吸/排板（卖出操作可为空）")
     price: Optional[float] = Field(None, ge=0, description="价格")
     is_executed: Optional[bool] = Field(None, description="是否执行策略")
     source: Optional[str] = Field(None, max_length=100, description="来源")
@@ -44,8 +44,11 @@ class TradingCalendarBase(BaseModel):
     @field_validator('strategy')
     @classmethod
     def validate_strategy(cls, v):
+        # 允许空字符串（用于卖出操作等不需要策略的情况）
+        if v == '' or v is None:
+            return ''
         if v not in ['低吸', '排板']:
-            raise ValueError('策略必须是"低吸"或"排板"')
+            raise ValueError('策略必须是"低吸"、"排板"或空字符串')
         return v
     
     @field_serializer('date')
@@ -109,8 +112,11 @@ class TradingCalendarUpdate(BaseModel):
     @field_validator('strategy')
     @classmethod
     def validate_strategy(cls, v):
-        if v is not None and v not in ['低吸', '排板']:
-            raise ValueError('策略必须是"低吸"或"排板"')
+        # 允许空字符串或None（用于卖出操作等不需要策略的情况）
+        if v == '' or v is None:
+            return ''
+        if v not in ['低吸', '排板']:
+            raise ValueError('策略必须是"低吸"、"排板"或空字符串')
         return v
     
     @field_validator('source', mode='before')
@@ -138,6 +144,7 @@ class TradingCalendarResponse(TradingCalendarBase):
     """交易日历响应"""
     id: int
     created_at: datetime
+    concepts: Optional[List[dict]] = Field(None, description="概念板块列表")
     
     @field_serializer('created_at', when_used='json')
     def serialize_datetime(self, value: datetime, _info) -> str:
@@ -145,6 +152,21 @@ class TradingCalendarResponse(TradingCalendarBase):
         if value is None:
             return None
         return value.isoformat()
+    
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        """重写验证方法，支持从模型对象中提取概念板块"""
+        if hasattr(obj, '_concepts'):
+            # 如果有动态添加的概念板块，转换为字典列表
+            concepts_data = [
+                {"id": c.id, "name": c.name, "code": c.code}
+                for c in obj._concepts
+            ]
+            # 创建字典并添加concepts字段
+            data = super().model_validate(obj, **kwargs).model_dump()
+            data['concepts'] = concepts_data
+            return cls(**data)
+        return super().model_validate(obj, **kwargs)
 
 
 class TradingCalendarListResponse(BaseModel):
