@@ -8,6 +8,12 @@ login.json
 .env.local
 .env.production.local
 .env.development.local
+.env.*.local
+
+# GitHub Token（本地配置，不提交）
+.github_token
+git_token.txt
+*.token
 
 # 构建输出
 frontend/dist/
