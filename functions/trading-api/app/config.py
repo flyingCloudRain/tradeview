@@ -44,8 +44,6 @@ class Settings(BaseSettings):
                 "http://127.0.0.1:5173",
                 "http://localhost:8080",
                 "http://127.0.0.1:8080",
-                "https://trade-view-0gtiozig72c07cd0.tcloudbaseapp.com",
-                "https://trade-view-0gtiozig72c07cd0-1306563949.tcloudbaseapp.com",
             ]
     else:
         CORS_ORIGINS: list = [
@@ -55,8 +53,6 @@ class Settings(BaseSettings):
             "http://127.0.0.1:5173",
             "http://localhost:8080",
             "http://127.0.0.1:8080",
-            "https://trade-view-0gtiozig72c07cd0.tcloudbaseapp.com",
-            "https://trade-view-0gtiozig72c07cd0-1306563949.tcloudbaseapp.com",
         ]
     
     # 分页配置
