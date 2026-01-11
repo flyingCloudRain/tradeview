@@ -62,7 +62,7 @@ jobs:
 
       - name: Run database migrations (optional)
         working-directory: ./backend
-        if: ${{ secrets.DATABASE_URL != '' }}
+        if: ${{ secrets.DATABASE_URL }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
