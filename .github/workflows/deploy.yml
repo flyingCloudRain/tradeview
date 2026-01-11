@@ -1,0 +1,113 @@
+name: Deploy to CloudBase
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:  # 允许手动触发
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.9'
+
+jobs:
+  deploy:
+    name: Deploy to CloudBase
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install CloudBase CLI
+        run: |
+          npm install -g @cloudbase/cli
+
+      - name: Configure CloudBase Authentication
+        run: |
+          echo "配置 CloudBase 认证..."
+          # 创建认证配置目录
+          mkdir -p ~/.tcb
+          
+          # 如果提供了密钥，尝试配置
+          if [ -n "$TCB_SECRET_ID" ] && [ -n "$TCB_SECRET_KEY" ]; then
+            echo "配置密钥信息..."
+            # 注意：CloudBase CLI 的实际认证方式可能需要根据版本调整
+            # 可能需要使用 cloudbase login 命令配合密钥
+            echo "TCB_SECRET_ID 和 TCB_SECRET_KEY 已设置"
+          fi
+          
+          # 重要提示：CloudBase CLI 在 CI/CD 中的认证方式
+          # 1. 可能需要预先在本地登录并导出 token
+          # 2. 或使用 cloudbase login --key 命令（如果支持）
+          # 3. 或使用环境变量配置（如果 CLI 支持）
+          echo "请根据 CloudBase CLI 版本配置认证方式"
+        env:
+          TCB_SECRET_ID: ${{ secrets.TCB_SECRET_ID }}
+          TCB_SECRET_KEY: ${{ secrets.TCB_SECRET_KEY }}
+
+      - name: Build Frontend
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Prepare Backend for Deployment
+        run: |
+          echo "准备后端代码..."
+          mkdir -p functions/trading-api
+          cp backend/index.py functions/trading-api/
+          cp backend/requirements.txt functions/trading-api/
+          cp -r backend/app functions/trading-api/
+          
+          # 确保 mangum 在 requirements.txt 中
+          if ! grep -q "mangum" functions/trading-api/requirements.txt; then
+            echo "mangum>=0.17.0" >> functions/trading-api/requirements.txt
+          fi
+
+      - name: Deploy Cloud Function
+        run: |
+          echo "部署云函数..."
+          ENV_ID="${{ secrets.CLOUDBASE_ENV_ID }}"
+          if [ -z "$ENV_ID" ]; then
+            echo "错误: CLOUDBASE_ENV_ID 未设置"
+            exit 1
+          fi
+          cloudbase functions:deploy trading-api -e "$ENV_ID" --force
+        env:
+          CLOUDBASE_ENV_ID: ${{ secrets.CLOUDBASE_ENV_ID }}
+
+      - name: Deploy Static Website
+        run: |
+          echo "部署静态网站..."
+          ENV_ID="${{ secrets.CLOUDBASE_ENV_ID }}"
+          if [ -z "$ENV_ID" ]; then
+            echo "错误: CLOUDBASE_ENV_ID 未设置"
+            exit 1
+          fi
+          cloudbase hosting:deploy frontend/dist -e "$ENV_ID"
+        env:
+          CLOUDBASE_ENV_ID: ${{ secrets.CLOUDBASE_ENV_ID }}
+
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 部署完成" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**环境 ID**: ${{ secrets.CLOUDBASE_ENV_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**访问地址**:">> $GITHUB_STEP_SUMMARY
+          echo "- 前端: https://${{ secrets.CLOUDBASE_ENV_ID }}.tcloudbaseapp.com" >> $GITHUB_STEP_SUMMARY
+          echo "- API: https://${{ secrets.CLOUDBASE_ENV_ID }}.ap-shanghai.app.tcloudbase.com/trading-api/api/v1" >> $GITHUB_STEP_SUMMARY

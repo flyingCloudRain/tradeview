@@ -1,0 +1,48 @@
+name: Deploy to CloudBase (Using Script)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  deploy:
+    name: Deploy to CloudBase
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install CloudBase CLI
+        run: npm install -g @cloudbase/cli
+
+      - name: Run Deployment Script
+        run: |
+          chmod +x deploy.sh
+          # 注意：需要先配置 CloudBase 认证
+          # 可以通过环境变量或密钥文件
+          echo "请确保已配置 CloudBase 认证信息"
+          # 临时方案：使用部署脚本（需要手动配置认证）
+          # ./deploy.sh
+        env:
+          CLOUDBASE_ENV_ID: ${{ secrets.CLOUDBASE_ENV_ID }}
+          TCB_SECRET_ID: ${{ secrets.TCB_SECRET_ID }}
+          TCB_SECRET_KEY: ${{ secrets.TCB_SECRET_KEY }}

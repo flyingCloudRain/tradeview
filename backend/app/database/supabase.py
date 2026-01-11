@@ -1,0 +1,28 @@
+"""
+Supabase配置
+"""
+from typing import Optional
+from supabase import create_client, Client
+
+from app.config import settings
+
+
+def get_supabase_client() -> Optional[Client]:
+    """
+    获取Supabase客户端
+    """
+    if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
+        return None
+    
+    return create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+
+
+def get_supabase_service_client() -> Optional[Client]:
+    """
+    获取Supabase服务端客户端（使用service key）
+    """
+    if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_KEY:
+        return None
+    
+    return create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
+

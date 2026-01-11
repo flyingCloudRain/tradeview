@@ -1,0 +1,56 @@
+# CloudBase 认证信息
+.tcb/
+*.tcb.json
+login.json
+
+# 环境变量文件
+.env
+.env.local
+.env.production.local
+.env.development.local
+
+# 构建输出
+frontend/dist/
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+*.pyo
+
+# 数据库
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 日志
+*.log
+logs/
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 依赖
+node_modules/
+venv/
+env/
+.venv/
+
+# 测试覆盖率
+coverage/
+.nyc_output/
+
+# 其他
+*.bak
+*.backup
