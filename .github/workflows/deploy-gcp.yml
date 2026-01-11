@@ -62,10 +62,14 @@ jobs:
 
       - name: Run database migrations (optional)
         working-directory: ./backend
-        if: ${{ secrets.DATABASE_URL }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "⚠️ DATABASE_URL not set, skipping database migrations"
+            exit 0
+          fi
+          
           if command -v alembic &> /dev/null || python -m alembic --help &> /dev/null; then
             echo "Running database migrations..."
             alembic upgrade head || python -m alembic upgrade head
