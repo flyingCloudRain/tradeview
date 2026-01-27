@@ -59,6 +59,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          echo "✅ Python dependencies installed successfully"
+          pip list | grep -E "(fastapi|mangum|functions-framework)" || echo "⚠️ Warning: Some dependencies may not be installed"
 
       - name: Run database migrations (optional)
         working-directory: ./backend
@@ -78,6 +80,15 @@ jobs:
             echo "⚠️ Alembic not found, skipping migrations"
           fi
 
+      - name: Verify deployment files
+        working-directory: ./backend
+        run: |
+          echo "Checking deployment files..."
+          ls -la main.py || echo "❌ main.py not found"
+          ls -la app/main.py || echo "❌ app/main.py not found"
+          ls -la requirements.txt || echo "❌ requirements.txt not found"
+          echo "✅ File check complete"
+
       - name: Deploy to Cloud Functions
         working-directory: ./backend
         env:
@@ -87,6 +98,8 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
         run: |
+          set -e  # Exit on error
+          
           # Prepare environment variables
           ENV_VARS=""
           [ -n "$DATABASE_URL" ] && ENV_VARS="$ENV_VARS,DATABASE_URL=$DATABASE_URL"
@@ -98,36 +111,46 @@ jobs:
           # Remove leading comma
           ENV_VARS=${ENV_VARS#,}
           
+          echo "=========================================="
           echo "Deploying Cloud Function..."
           echo "Function: ${{ env.FUNCTION_NAME }}"
           echo "Region: ${{ env.GCP_REGION }}"
+          echo "Entry Point: main"
+          echo "Environment Variables: ${ENV_VARS:0:100}..." # Show first 100 chars
+          echo "=========================================="
           
+          # Build deployment command
+          DEPLOY_CMD="gcloud functions deploy ${{ env.FUNCTION_NAME }} \
+            --gen2 \
+            --runtime=python311 \
+            --region=${{ env.GCP_REGION }} \
+            --source=. \
+            --entry-point=main \
+            --trigger-http \
+            --allow-unauthenticated \
+            --memory=512MB \
+            --timeout=540s \
+            --max-instances=10"
+          
+          # Add environment variables if present
           if [ -n "$ENV_VARS" ]; then
-            gcloud functions deploy ${{ env.FUNCTION_NAME }} \
-              --gen2 \
-              --runtime=python311 \
-              --region=${{ env.GCP_REGION }} \
-              --source=. \
-              --entry-point=main \
-              --trigger-http \
-              --allow-unauthenticated \
-              --memory=512MB \
-              --timeout=540s \
-              --max-instances=10 \
-              --set-env-vars="$ENV_VARS"
-          else
-            gcloud functions deploy ${{ env.FUNCTION_NAME }} \
-              --gen2 \
-              --runtime=python311 \
-              --region=${{ env.GCP_REGION }} \
-              --source=. \
-              --entry-point=main \
-              --trigger-http \
-              --allow-unauthenticated \
-              --memory=512MB \
-              --timeout=540s \
-              --max-instances=10
+            DEPLOY_CMD="$DEPLOY_CMD --set-env-vars=\"$ENV_VARS\""
           fi
+          
+          echo "Executing deployment command..."
+          eval $DEPLOY_CMD || {
+            echo "❌ Deployment failed!"
+            echo "Checking for common issues..."
+            echo "1. Verifying gcloud authentication..."
+            gcloud auth list || echo "⚠️ Authentication issue"
+            echo "2. Verifying project access..."
+            gcloud projects describe ${{ env.GCP_PROJECT_ID }} || echo "⚠️ Project access issue"
+            echo "3. Checking required APIs..."
+            gcloud services list --enabled --filter="name:cloudfunctions.googleapis.com OR name:cloudbuild.googleapis.com" || echo "⚠️ API not enabled"
+            exit 1
+          }
+          
+          echo "✅ Deployment command executed successfully"
 
       - name: Get Function URL
         id: function-url
