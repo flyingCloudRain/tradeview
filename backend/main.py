@@ -25,22 +25,16 @@ except Exception as e:
     def error_health():
         return {"status": "error", "message": str(e)}
 
-# 使用 Mangum 作为 ASGI 适配器（推荐方式）
+# 直接使用 FastAPI ASGI 应用（推荐方式）
+# 注意：Cloud Functions Gen 2 支持直接使用 ASGI 应用
 try:
-    from mangum import Mangum
     from flask import Request, Response
     import asyncio
     import json
     
-    # 创建 ASGI 适配器
-    # Mangum 实例本身就是一个 ASGI 应用，可以直接调用
-    # 注意：Mangum 是为 AWS Lambda 设计的，在 Cloud Functions 中需要特殊处理
-    mangum_handler = Mangum(app, lifespan="off")
-    
-    # 创建一个包装函数来正确处理 ASGI 调用
-    async def asgi_app(scope, receive, send):
-        """ASGI 应用包装器"""
-        return await mangum_handler(scope, receive, send)
+    # 直接使用 FastAPI 应用作为 ASGI 应用
+    # FastAPI 应用本身就是 ASGI 应用，可以直接调用
+    asgi_app = app
     
     def main(request: Request) -> Response:
         """
