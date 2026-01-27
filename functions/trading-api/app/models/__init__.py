@@ -5,9 +5,6 @@ from app.models.lhb import (
     LhbDetail,
     LhbInstitution,
     LhbHotInstitution,
-    Trader,
-    TraderBranch,
-    TraderBranchHistory,
 )
 from app.models.capital import CapitalDetail
 from app.models.index import IndexHistory
@@ -29,9 +26,6 @@ __all__ = [
     "ZtPool",
     "ZtPoolDown",
     "LhbHotInstitution",
-    "Trader",
-    "TraderBranch",
-    "TraderBranchHistory",
     "TradingCalendar",
     "TaskExecution",
     "TaskStatus",

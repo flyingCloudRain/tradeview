@@ -13,7 +13,7 @@ class TradingCalendarBase(BaseModel):
     date: dt_date
     stock_name: str = Field(..., min_length=1, max_length=50, description="股票名称")
     direction: str = Field(..., description="操作方向：买入/卖出")
-    strategy: str = Field(..., description="策略：低吸/排板")
+    strategy: str = Field(..., description="策略：低吸/排板/加仓")
     price: Optional[float] = Field(None, ge=0, description="价格")
     is_executed: Optional[bool] = Field(None, description="是否执行策略")
     source: Optional[str] = Field(None, max_length=100, description="来源")
@@ -44,8 +44,8 @@ class TradingCalendarBase(BaseModel):
     @field_validator('strategy')
     @classmethod
     def validate_strategy(cls, v):
-        if v not in ['低吸', '排板']:
-            raise ValueError('策略必须是"低吸"或"排板"')
+        if v not in ['低吸', '排板', '加仓']:
+            raise ValueError('策略必须是"低吸"、"排板"或"加仓"')
         return v
     
     @field_serializer('date')
@@ -109,8 +109,8 @@ class TradingCalendarUpdate(BaseModel):
     @field_validator('strategy')
     @classmethod
     def validate_strategy(cls, v):
-        if v is not None and v not in ['低吸', '排板']:
-            raise ValueError('策略必须是"低吸"或"排板"')
+        if v is not None and v not in ['低吸', '排板', '加仓']:
+            raise ValueError('策略必须是"低吸"、"排板"或"加仓"')
         return v
     
     @field_validator('source', mode='before')

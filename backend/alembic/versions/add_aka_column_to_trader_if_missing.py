@@ -1,7 +1,7 @@
 """add aka column to trader table if missing
 
 Revision ID: add_aka_column_to_trader
-Revises: change_trader_aka_comment
+Revises: add_price_and_is_executed
 Create Date: 2026-01-10 02:05:00.000000
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision: str = 'add_aka_column_to_trader'
-down_revision: Union[str, None] = 'change_trader_aka_comment'
+down_revision: Union[str, None] = 'add_price_and_is_executed'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

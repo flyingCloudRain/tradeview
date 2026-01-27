@@ -2,16 +2,37 @@
 涨停板分析服务
 """
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc, asc, func, or_, cast, String
+from sqlalchemy import and_, desc, asc, func, or_, cast, String, case, Integer, text
 from typing import Optional, List, Tuple
 from datetime import date, time
 import math
 import json
+import re
 
 from app.models.limit_up_board import LimitUpBoard, LimitUpBoardConcept
 from app.models.stock_concept import StockConcept
 from app.schemas.limit_up_board import LimitUpBoardCreate, LimitUpBoardUpdate
 from app.services.stock_concept_service import StockConceptService
+
+
+def extract_board_count(limit_up_days: Optional[str]) -> Optional[int]:
+    """
+    从 limit_up_days 字段中提取板数
+    例如: "11 天 9 板" -> 9
+    """
+    if not limit_up_days:
+        return None
+    
+    # 使用正则表达式提取板数
+    # 匹配格式: "X 板" 或 "X板" 或 "X/板" 等
+    match = re.search(r'(\d+)\s*板', limit_up_days)
+    if match:
+        try:
+            return int(match.group(1))
+        except ValueError:
+            return None
+    
+    return None
 
 
 class LimitUpBoardService:
@@ -66,9 +87,16 @@ class LimitUpBoardService:
         limit_up_reason: Optional[str] = None,
         concept_id: Optional[int] = None,
         concept_name: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        order: str = "desc",
     ) -> Tuple[List[LimitUpBoard], int]:
         """
         获取涨停板分析列表
+        
+        Args:
+            sort_by: 排序字段，支持: date, board_name, stock_code, stock_name, 
+                    board_count (板数), circulation_market_value, turnover_amount
+            order: 排序方向，asc 或 desc
         """
         query = db.query(LimitUpBoard)
         
@@ -104,11 +132,59 @@ class LimitUpBoardService:
         # 获取总数
         total = query.count()
         
-        # 分页和排序
-        query = query.order_by(desc(LimitUpBoard.date), LimitUpBoard.board_name, LimitUpBoard.stock_code)
-        query = query.offset((page - 1) * page_size).limit(page_size)
-        
-        items = query.all()
+        # 排序逻辑
+        if sort_by == "board_count":
+            # 按板数排序：使用 PostgreSQL 的正则表达式提取板数
+            # 使用 regexp_replace 提取 "X 板" 中的数字
+            # 匹配格式: "X 板" 或 "X板" 等，提取数字部分
+            # PostgreSQL 正则表达式语法: regexp_replace(source, pattern, replacement, flags)
+            # 注意：PostgreSQL 使用 E'...' 来表示转义字符串，或者使用双反斜杠
+            board_count_expr = func.cast(
+                func.coalesce(
+                    func.nullif(
+                        func.regexp_replace(
+                            LimitUpBoard.limit_up_days,
+                            '.*?(\\d+)\\s*板.*',
+                            '\\1',
+                            'g'
+                        ),
+                        ''
+                    ),
+                    '0'
+                ),
+                Integer
+            )
+            
+            if order == "desc":
+                query = query.order_by(desc(board_count_expr))
+            else:
+                query = query.order_by(asc(board_count_expr))
+            
+            # 添加次要排序字段
+            query = query.order_by(desc(LimitUpBoard.date), LimitUpBoard.board_name, LimitUpBoard.stock_code)
+            
+            # 分页
+            query = query.offset((page - 1) * page_size).limit(page_size)
+            items = query.all()
+        else:
+            # 其他字段的排序
+            if sort_by:
+                sort_column = getattr(LimitUpBoard, sort_by, None)
+                if sort_column:
+                    if order == "desc":
+                        query = query.order_by(desc(sort_column))
+                    else:
+                        query = query.order_by(asc(sort_column))
+                else:
+                    # 如果字段不存在，使用默认排序
+                    query = query.order_by(desc(LimitUpBoard.date), LimitUpBoard.board_name, LimitUpBoard.stock_code)
+            else:
+                # 默认排序
+                query = query.order_by(desc(LimitUpBoard.date), LimitUpBoard.board_name, LimitUpBoard.stock_code)
+            
+            # 分页
+            query = query.offset((page - 1) * page_size).limit(page_size)
+            items = query.all()
         
         # 加载概念板块关联
         for item in items:
@@ -157,6 +233,19 @@ class LimitUpBoardService:
             keywords=item.keywords,
             limit_up_reason=item.limit_up_reason,
             tags=item.tags,
+            # 新增字段
+            price_change_pct=item.price_change_pct,
+            latest_price=item.latest_price,
+            turnover=item.turnover,
+            total_market_value=item.total_market_value,
+            turnover_rate=item.turnover_rate,
+            sealing_capital=item.sealing_capital,
+            first_sealing_time=item.first_sealing_time,
+            last_sealing_time=item.last_sealing_time,
+            board_breaking_count=item.board_breaking_count,
+            limit_up_statistics=item.limit_up_statistics,
+            consecutive_board_count=item.consecutive_board_count,
+            industry=item.industry,
         )
         db.add(db_item)
         db.flush()  # 获取ID
@@ -281,3 +370,93 @@ class LimitUpBoardService:
             'total_boards': len(board_stats),
             'total_stocks': sum(count for _, count in board_stats)
         }
+    
+    @staticmethod
+    def get_board_count_statistics(
+        db: Session,
+        target_date: Optional[date] = None
+    ) -> dict:
+        """
+        获取板数统计信息
+        统计一板、二板、三板、四板、五板以上的数量
+        """
+        query = db.query(LimitUpBoard)
+        
+        if target_date:
+            query = query.filter(LimitUpBoard.date == target_date)
+        
+        # 使用 PostgreSQL 正则表达式提取板数
+        # 提取 limit_up_days 字段中的板数（如 "11 天 9 板" -> 9）
+        board_count_expr = func.cast(
+            func.coalesce(
+                func.nullif(
+                    func.regexp_replace(
+                        LimitUpBoard.limit_up_days,
+                        '.*?(\\d+)\\s*板.*',
+                        '\\1',
+                        'g'
+                    ),
+                    ''
+                ),
+                '0'
+            ),
+            Integer
+        )
+        
+        # 使用 CASE 语句将板数分类
+        board_category = case(
+            (board_count_expr == 1, '一板'),
+            (board_count_expr == 2, '二板'),
+            (board_count_expr == 3, '三板'),
+            (board_count_expr == 4, '四板'),
+            (board_count_expr >= 5, '五板以上'),
+            else_='未知'
+        )
+        
+        # 统计各板数的数量
+        stats_query = db.query(
+            board_category.label('board_category'),
+            func.count(LimitUpBoard.id).label('count')
+        ).group_by(board_category)
+        
+        if target_date:
+            stats_query = stats_query.filter(LimitUpBoard.date == target_date)
+        
+        stats = stats_query.all()
+        
+        # 转换为字典格式
+        result = {
+            'board_1': 0,  # 一板
+            'board_2': 0,  # 二板
+            'board_3': 0,  # 三板
+            'board_4': 0,  # 四板
+            'board_5_plus': 0,  # 五板以上
+            'unknown': 0,  # 未知
+            'total': 0  # 总数
+        }
+        
+        for category, count in stats:
+            if category == '一板':
+                result['board_1'] = count
+            elif category == '二板':
+                result['board_2'] = count
+            elif category == '三板':
+                result['board_3'] = count
+            elif category == '四板':
+                result['board_4'] = count
+            elif category == '五板以上':
+                result['board_5_plus'] = count
+            else:
+                result['unknown'] = count
+        
+        # 计算总数
+        result['total'] = sum([
+            result['board_1'],
+            result['board_2'],
+            result['board_3'],
+            result['board_4'],
+            result['board_5_plus'],
+            result['unknown']
+        ])
+        
+        return result

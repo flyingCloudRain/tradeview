@@ -18,8 +18,10 @@ router = APIRouter()
 
 @router.get("/", response_model=ZtPoolListResponse)
 def get_zt_pool_list(
-    date: str = Query(..., description="日期，格式：YYYY-MM-DD"),
+    start_date: str = Query(..., description="开始日期，格式：YYYY-MM-DD"),
+    end_date: str = Query(..., description="结束日期，格式：YYYY-MM-DD"),
     stock_code: Optional[str] = Query(None, description="股票代码"),
+    stock_name: Optional[str] = Query(None, description="股票名称（模糊匹配）"),
     concept: Optional[str] = Query(None, description="概念筛选（文本字段，兼容旧接口）"),
     industry: Optional[str] = Query(None, description="行业筛选"),
     consecutive_limit_count: Optional[int] = Query(None, description="连板数筛选"),
@@ -34,10 +36,14 @@ def get_zt_pool_list(
     db: Session = Depends(get_db)
 ):
     """获取涨停池列表"""
-    target_date = parse_date(date)
-    if not target_date:
-        from fastapi import HTTPException
+    # 解析日期参数
+    parsed_start_date = parse_date(start_date)
+    parsed_end_date = parse_date(end_date)
+    
+    if not parsed_start_date or not parsed_end_date:
         raise HTTPException(status_code=400, detail="日期格式错误")
+    if parsed_start_date > parsed_end_date:
+        raise HTTPException(status_code=400, detail="开始日期不能大于结束日期")
     
     # 解析概念板块参数
     concept_ids_list = None
@@ -53,8 +59,10 @@ def get_zt_pool_list(
     
     items, total = ZtPoolService.get_zt_pool_list(
         db=db,
-        target_date=target_date,
+        start_date=parsed_start_date,
+        end_date=parsed_end_date,
         stock_code=stock_code,
+        stock_name=stock_name,
         concept=concept,
         industry=industry,
         consecutive_limit_count=consecutive_limit_count,

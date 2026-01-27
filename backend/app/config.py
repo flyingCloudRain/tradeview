@@ -3,6 +3,7 @@
 """
 import os
 from typing import Optional
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -16,9 +17,15 @@ class Settings(BaseSettings):
     
     # 数据库配置
     # 必须通过环境变量设置 DATABASE_URL
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
-    if not DATABASE_URL:
-        raise ValueError("DATABASE_URL environment variable is required")
+    DATABASE_URL: str = Field(default="", description="数据库连接URL")
+    
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def validate_database_url(cls, v: str) -> str:
+        """验证 DATABASE_URL 是否设置"""
+        if not v:
+            raise ValueError("DATABASE_URL environment variable is required")
+        return v
     
     # Supabase配置
     SUPABASE_URL: Optional[str] = os.getenv("SUPABASE_URL")

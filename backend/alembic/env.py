@@ -8,21 +8,55 @@ from alembic import context
 
 # 导入配置和模型
 import sys
+import os
 from pathlib import Path
 
 # 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from app.config import settings
-from app.database.base import Base
-from app.models import *  # 导入所有模型
-
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 
-# 设置数据库URL
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# 导入 settings（可能会抛出 ValueError 如果 DATABASE_URL 未设置）
+# 但我们先尝试从其他来源获取 DATABASE_URL
+try:
+    from app.config import settings
+except ValueError:
+    # 如果 settings 导入失败，先尝试从环境变量或 alembic.ini 获取
+    settings = None
+
+# 确定数据库URL的优先级：环境变量 > alembic.ini > settings
+database_url = os.getenv("DATABASE_URL")
+
+# 如果没有环境变量，尝试从 alembic.ini 读取
+if not database_url:
+    database_url = config.get_main_option("sqlalchemy.url")
+    # 如果是占位符或无效值，清空以便后续从 settings 读取
+    if database_url == "driver://user:pass@localhost/dbname":
+        database_url = None
+
+# 如果前两者都没有，尝试从 settings 读取
+if not database_url:
+    if settings:
+        database_url = settings.DATABASE_URL
+    else:
+        # 如果 settings 也没有，提供友好的错误信息
+        raise ValueError(
+            "DATABASE_URL 环境变量未设置。\n"
+            "请执行以下操作之一：\n"
+            "1. 设置环境变量: export DATABASE_URL='postgresql://...'\n"
+            "2. 在 alembic.ini 中配置 sqlalchemy.url\n"
+            "3. 使用: source backend/setup_env.sh"
+        )
+
+# 设置数据库URL到 alembic config
+if database_url:
+    config.set_main_option("sqlalchemy.url", database_url)
+
+# 导入模型（在设置数据库URL之后）
+from app.database.base import Base
+from app.models import *  # 导入所有模型
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

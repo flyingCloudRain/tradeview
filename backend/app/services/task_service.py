@@ -31,8 +31,10 @@ class TaskService:
     """任务管理服务"""
     
     TASK_NAMES = {
-        "lhb": "龙虎榜数据同步",
-        "lhb_institution": "龙虎榜机构数据同步",
+        "lhb": "龙虎榜个股",
+        "lhb_institution": "龙虎榜个股机构",
+        "institution_trading_statistics": "机构每日交易统计数据同步",
+        "active_branch": "活跃营业部数据同步",
         "zt_pool": "涨停池数据同步",
         "zt_pool_down": "跌停池数据同步",
         "index": "大盘指数数据同步",
@@ -50,11 +52,12 @@ class TaskService:
         status: Optional[TaskStatus] = None,
         task_name: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """获取任务执行历史列表（优化版本）"""
+        """获取任务执行历史列表（高性能优化版本）"""
         try:
             # 构建基础查询
             query = db.query(TaskExecution)
             
+            # 应用过滤条件（这些条件会利用我们添加的复合索引）
             if task_type:
                 query = query.filter(TaskExecution.task_type == task_type)
             if status:
@@ -62,17 +65,25 @@ class TaskService:
             if task_name:
                 query = query.filter(TaskExecution.task_name == task_name)
             
-            # 优化：先获取分页数据，再获取总数（如果数据量大，可以只估算）
-            # 先排序并分页查询
+            # 优化：使用索引优化的排序（start_time 有索引）
+            # 对于大数据集，先获取分页数据，再决定是否需要总数
             items_query = query.order_by(desc(TaskExecution.start_time))
+            
+            # 先查询分页数据
             items = items_query.offset((page - 1) * page_size).limit(page_size).all()
             
-            # 获取总数（如果第一页没有数据，可能不需要总数）
+            # 优化总数查询策略：
+            # 1. 如果第一页数据不足一页，总数就是当前数据量
+            # 2. 如果第一页数据满页，需要计算总数（但可以延迟计算）
+            # 3. 对于大数据集，可以考虑使用近似计数或跳过总数计算
+            
             if page == 1 and len(items) < page_size:
-                # 如果第一页数据不足一页，总数就是当前数据量
+                # 第一页数据不足一页，总数就是当前数据量
                 total = len(items)
             else:
-                # 否则需要计算总数
+                # 需要计算总数
+                # 优化：如果查询条件简单，使用更高效的count查询
+                # 对于复杂查询，可以考虑使用近似计数或延迟加载
                 total = query.count()
             
             total_pages = (total + page_size - 1) // page_size if total > 0 else 0
@@ -109,22 +120,29 @@ class TaskService:
     
     @staticmethod
     def get_task_status_summary(db: Session) -> Dict[str, Any]:
-        """获取任务状态汇总（优化版本，使用更高效的查询）"""
+        """获取任务状态汇总（高性能优化版本，使用子查询减少数据库往返）"""
         try:
-            # 优化：使用窗口函数或更简单的查询方式
-            # 首先获取每个任务类型的最新执行记录ID
-            from sqlalchemy import distinct
+            from sqlalchemy import or_, text
             
-            # 方法1：使用窗口函数（如果数据库支持）或子查询
-            # 为了兼容性，使用更简单的方法：先获取每个任务类型的最新时间，然后查询
+            # 优化策略：使用PostgreSQL的DISTINCT ON特性，一次性获取每个任务类型的最新记录
+            # 如果DISTINCT ON不支持，回退到使用子查询的方式
             
-            # 获取每个任务类型的最新执行时间（单次查询）
-            latest_times = db.query(
-                TaskExecution.task_type,
-                func.max(TaskExecution.start_time).label('max_time')
-            ).group_by(TaskExecution.task_type).all()
+            # 优化：使用子查询一次性获取每个任务类型的最新记录ID，然后查询完整记录
+            # 这种方法比多次查询更高效，且兼容性好
             
-            if not latest_times:
+            # 先获取每个任务类型的最新记录ID（使用子查询）
+            latest_ids_subquery = db.query(
+                func.max(TaskExecution.id).label('max_id')
+            ).group_by(TaskExecution.task_type).subquery()
+            
+            # 使用IN查询获取所有最新记录（单次查询）
+            latest_executions = db.query(TaskExecution).filter(
+                TaskExecution.id.in_(
+                    db.query(latest_ids_subquery.c.max_id)
+                )
+            ).all()
+            
+            if not latest_executions:
                 # 如果没有执行记录，返回所有任务类型的默认状态
                 return {
                     task_type: {
@@ -137,20 +155,6 @@ class TaskService:
                     }
                     for task_type, task_name in TaskService.TASK_NAMES.items()
                 }
-            
-            # 构建查询条件：获取每个任务类型的最新记录
-            conditions = []
-            for task_type, max_time in latest_times:
-                conditions.append(
-                    (TaskExecution.task_type == task_type) & 
-                    (TaskExecution.start_time == max_time)
-                )
-            
-            # 使用 OR 条件一次性查询所有最新记录
-            from sqlalchemy import or_
-            latest_executions = db.query(TaskExecution).filter(
-                or_(*conditions)
-            ).all()
             
             # 获取每个任务类型最后一次成功执行的时间（单次查询）
             success_times = db.query(

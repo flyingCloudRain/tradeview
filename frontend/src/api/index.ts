@@ -17,6 +17,16 @@ export interface IndexListParams {
   index_code?: string
 }
 
+export interface IndexKlineItem {
+  date: string
+  open: number | null
+  high: number | null
+  low: number | null
+  close: number | null
+  volume: number | null
+  amount: number | null
+}
+
 export const indexApi = {
   getList: async (params: IndexListParams): Promise<IndexItem[]> => {
     // 清理参数，只传递有效值
@@ -31,6 +41,12 @@ export const indexApi = {
 
   getHistory: async (indexCode: string, startDate: string, endDate: string) => {
     return await apiClient.get(`/index/${indexCode}/history`, {
+      params: { start_date: startDate, end_date: endDate },
+    })
+  },
+
+  getKline: async (indexCode: string, startDate: string, endDate: string): Promise<IndexKlineItem[]> => {
+    return await apiClient.get(`/index/${indexCode}/kline`, {
       params: { start_date: startDate, end_date: endDate },
     })
   },

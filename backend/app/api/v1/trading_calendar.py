@@ -40,7 +40,7 @@ def get_trading_calendar_list(
     end_date: Optional[str] = Query(None, description="结束日期，格式：YYYY-MM-DD"),
     stock_name: Optional[str] = Query(None, description="股票名称（模糊查询）"),
     direction: Optional[str] = Query(None, description="操作方向：买入/卖出"),
-    strategy: Optional[str] = Query(None, description="策略：低吸/排板"),
+    strategy: Optional[str] = Query(None, description="策略：低吸/排板/加仓"),
     source: Optional[str] = Query(None, description="来源"),
     concept_ids: Optional[str] = Query(None, description="概念板块ID列表（逗号分隔，如：1,2,3）"),
     concept_names: Optional[str] = Query(None, description="概念板块名称列表（逗号分隔，如：人工智能,新能源）"),

@@ -47,8 +47,8 @@ class TradingCalendarBase(BaseModel):
         # 允许空字符串（用于卖出操作等不需要策略的情况）
         if v == '' or v is None:
             return ''
-        if v not in ['低吸', '排板']:
-            raise ValueError('策略必须是"低吸"、"排板"或空字符串')
+        if v not in ['低吸', '排板', '加仓']:
+            raise ValueError('策略必须是"低吸"、"排板"、"加仓"或空字符串')
         return v
     
     @field_serializer('date')
@@ -115,8 +115,8 @@ class TradingCalendarUpdate(BaseModel):
         # 允许空字符串或None（用于卖出操作等不需要策略的情况）
         if v == '' or v is None:
             return ''
-        if v not in ['低吸', '排板']:
-            raise ValueError('策略必须是"低吸"、"排板"或空字符串')
+        if v not in ['低吸', '排板', '加仓']:
+            raise ValueError('策略必须是"低吸"、"排板"、"加仓"或空字符串')
         return v
     
     @field_validator('source', mode='before')

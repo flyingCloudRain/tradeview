@@ -11,6 +11,9 @@ class StockConceptBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="概念板块名称")
     code: Optional[str] = Field(None, max_length=20, description="概念板块代码")
     description: Optional[str] = Field(None, description="概念板块描述")
+    parent_id: Optional[int] = Field(None, description="父概念ID，NULL表示一级概念")
+    level: int = Field(1, ge=1, le=3, description="层级：1=一级，2=二级，3=三级")
+    sort_order: int = Field(0, description="同级排序顺序")
 
 
 class StockConceptCreate(StockConceptBase):
@@ -23,12 +26,38 @@ class StockConceptUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     code: Optional[str] = Field(None, max_length=20)
     description: Optional[str] = None
+    parent_id: Optional[int] = None
+    sort_order: Optional[int] = None
 
 
 class StockConceptResponse(StockConceptBase):
     """概念板块响应"""
     id: int
+    path: Optional[str] = Field(None, description="层级路径")
+    stock_count: int = Field(0, description="关联的个股数量")
     created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class ConceptInfo(BaseModel):
+    """概念信息（带层级，用于个股响应）"""
+    id: int
+    name: str
+    code: Optional[str] = None
+    level: int = Field(..., description="层级：1=一级，2=二级，3=三级")
+    parent_id: Optional[int] = Field(None, description="父概念ID")
+    path: Optional[str] = Field(None, description="层级路径")
+    
+    class Config:
+        from_attributes = True
+
+
+class StockConceptTree(StockConceptResponse):
+    """带子节点的树形结构"""
+    children: List['StockConceptTree'] = Field(default_factory=list)
     
     class Config:
         from_attributes = True

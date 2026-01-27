@@ -1,7 +1,7 @@
 """
 涨停池数据模型
 """
-from sqlalchemy import Column, String, Date, Numeric, Integer, BigInteger, Time, Text
+from sqlalchemy import Column, String, Date, Numeric, Integer, BigInteger, Time, Text, Index
 from datetime import date, time
 
 from app.database.base import BaseModel
@@ -31,6 +31,8 @@ class ZtPool(BaseModel):
     limit_up_reason = Column(Text)  # 涨停原因
     
     __table_args__ = (
+        Index('idx_zt_pool_date_stock', 'date', 'stock_code'),
+        Index('idx_zt_pool_stock_date', 'stock_code', 'date'),
         {"comment": "涨停池表"},
     )
 

@@ -5,9 +5,9 @@ from app.models.lhb import (
     LhbDetail,
     LhbInstitution,
     LhbHotInstitution,
-    Trader,
-    TraderBranch,
-    TraderBranchHistory,
+    InstitutionTradingStatistics,
+    ActiveBranch,
+    ActiveBranchDetail,
 )
 from app.models.capital import CapitalDetail
 from app.models.index import IndexHistory
@@ -18,6 +18,7 @@ from app.models.trading_calendar import TradingCalendar
 from app.models.task_execution import TaskExecution, TaskStatus
 from app.models.stock_concept import StockConcept, StockConceptMapping, TradingCalendarConcept
 from app.models.limit_up_board import LimitUpBoard, LimitUpBoardConcept
+from app.models.stock_history import StockHistory
 
 __all__ = [
     "LhbDetail",
@@ -31,9 +32,9 @@ __all__ = [
     "ZtPool",
     "ZtPoolDown",
     "LhbHotInstitution",
-    "Trader",
-    "TraderBranch",
-    "TraderBranchHistory",
+    "InstitutionTradingStatistics",
+    "ActiveBranch",
+    "ActiveBranchDetail",
     "TradingCalendar",
     "TaskExecution",
     "TaskStatus",
@@ -42,5 +43,6 @@ __all__ = [
     "TradingCalendarConcept",
     "LimitUpBoard",
     "LimitUpBoardConcept",
+    "StockHistory",
 ]
 

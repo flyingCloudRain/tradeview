@@ -19,11 +19,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 添加价格字段
-    op.add_column('trading_calendar', sa.Column('price', sa.Numeric(precision=10, scale=2), nullable=True, comment='价格'))
+    # 检查列是否存在，如果不存在则添加
+    from sqlalchemy import inspect
+    conn = op.get_bind()
+    inspector = inspect(conn)
+    columns = [col['name'] for col in inspector.get_columns('trading_calendar')]
     
-    # 添加是否执行策略字段
-    op.add_column('trading_calendar', sa.Column('is_executed', sa.Boolean(), nullable=True, server_default='0', comment='是否执行策略'))
+    # 添加价格字段（如果不存在）
+    if 'price' not in columns:
+        op.add_column('trading_calendar', sa.Column('price', sa.Numeric(precision=10, scale=2), nullable=True, comment='价格'))
+    
+    # 添加是否执行策略字段（如果不存在）
+    if 'is_executed' not in columns:
+        op.add_column('trading_calendar', sa.Column('is_executed', sa.Boolean(), nullable=True, server_default='0', comment='是否执行策略'))
 
 
 def downgrade() -> None:

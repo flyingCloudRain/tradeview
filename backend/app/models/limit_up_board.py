@@ -25,6 +25,20 @@ class LimitUpBoard(BaseModel):
     limit_up_reason = Column(Text, nullable=True, comment="涨停原因（解析后的主要原因）")
     tags = Column(JSON, nullable=True, comment="涨停标签列表（从关键字解析）")
     
+    # 新增字段
+    price_change_pct = Column(Numeric(10, 2), nullable=True, comment="涨跌幅（%）")
+    latest_price = Column(Numeric(10, 2), nullable=True, comment="最新价")
+    turnover = Column(Numeric(20, 0), nullable=True, comment="成交额")
+    total_market_value = Column(Numeric(15, 2), nullable=True, comment="总市值（亿元）")
+    turnover_rate = Column(Numeric(10, 2), nullable=True, comment="换手率（%）")
+    sealing_capital = Column(Numeric(20, 0), nullable=True, comment="封板资金")
+    first_sealing_time = Column(Time, nullable=True, comment="首次封板时间（格式：09:25:00）")
+    last_sealing_time = Column(Time, nullable=True, comment="最后封板时间（格式：09:25:00）")
+    board_breaking_count = Column(Integer, nullable=True, comment="炸板次数")
+    limit_up_statistics = Column(String(100), nullable=True, comment="涨停统计")
+    consecutive_board_count = Column(Integer, nullable=True, comment="连板数（1为首板）")
+    industry = Column(String(100), nullable=True, index=True, comment="所属行业")
+    
     # 关联关系
     concept_mappings = relationship(
         "LimitUpBoardConcept",

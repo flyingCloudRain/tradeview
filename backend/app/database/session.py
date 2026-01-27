@@ -24,13 +24,20 @@ QUERY_TIMEOUT = 30
 
 # PostgreSQL/Supabase 连接参数
 connect_args = {}
+
+# 优化连接池配置：
+# - pool_size: 基础连接池大小，增加以支持更多并发请求和定时任务
+# - max_overflow: 超出pool_size后可以创建的额外连接数
+# - pool_timeout: 获取连接的超时时间
+# 注意：定时任务使用独立线程执行，需要足够的连接数避免阻塞
 engine = create_engine(
     db_url,
     connect_args=connect_args,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    pool_pre_ping=True,  # 连接前ping，确保连接有效
+    pool_size=15,  # 增加基础连接池大小（从10增加到15）
+    max_overflow=25,  # 增加最大溢出连接数（从20增加到25），支持更多并发
     pool_timeout=10,  # 连接池获取连接超时
+    pool_recycle=3600,  # 连接回收时间（1小时），避免长时间连接导致的数据库连接超时
     echo=False,
 )
 

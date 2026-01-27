@@ -11,109 +11,115 @@
         </div>
       </template>
 
-      <!-- 任务状态汇总 -->
-      <el-card shadow="never" class="status-summary">
-        <template #header>
-          <span>任务状态汇总</span>
-          <el-button text @click="loadStatusSummary" :loading="loadingStatus">
-            <el-icon><Refresh /></el-icon>
-            刷新
-          </el-button>
-        </template>
-        
-        <!-- 表格视图 -->
-        <el-table
-          :data="statusSummaryList"
-          v-loading="loadingStatus"
-          stripe
-          style="width: 100%"
-          :default-sort="{ prop: 'task_type', order: 'ascending' }"
-        >
-          <el-table-column prop="task_name" label="任务名称" min-width="180" sortable />
-          <el-table-column prop="task_type" label="任务类型" width="150" sortable />
-          <el-table-column prop="status" label="状态" width="100" sortable>
-            <template #default="{ row }">
-              <el-tag
-                :type="getStatusType(row.status)"
-                size="small"
+      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+        <!-- 任务状态汇总 Tab -->
+        <el-tab-pane label="任务状态" name="status">
+          <el-card shadow="never" class="status-summary">
+            <template #header>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>任务状态汇总</span>
+                <el-button text @click="loadStatusSummary" :loading="loadingStatus">
+                  <el-icon><Refresh /></el-icon>
+                  刷新
+                </el-button>
+              </div>
+            </template>
+            
+            <!-- 表格视图 -->
+            <el-table
+              :data="statusSummaryList"
+              v-loading="loadingStatus"
+              stripe
+              style="width: 100%"
+              :default-sort="{ prop: 'task_type', order: 'ascending' }"
+            >
+              <el-table-column prop="task_name" label="任务名称" min-width="180" sortable />
+              <el-table-column prop="task_type" label="任务类型" width="150" sortable />
+              <el-table-column prop="status" label="状态" width="100" sortable>
+                <template #default="{ row }">
+                  <el-tag
+                    :type="getStatusType(row.status)"
+                    size="small"
+                  >
+                    {{ getStatusText(row.status) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="last_run_time" label="最后执行时间" width="180" sortable>
+                <template #default="{ row }">
+                  <span v-if="row.last_run_time">{{ formatTime(row.last_run_time) }}</span>
+                  <span v-else class="text-muted">从未执行</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="last_success_time" label="最后成功时间" width="180" sortable>
+                <template #default="{ row }">
+                  <span v-if="row.last_success_time">{{ formatTime(row.last_success_time) }}</span>
+                  <span v-else class="text-muted">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="duration" label="执行时长" width="100" sortable>
+                <template #default="{ row }">
+                  <span v-if="row.duration">{{ row.duration }}秒</span>
+                  <span v-else class="text-muted">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="error_message" label="错误信息" min-width="200" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <span v-if="row.error_message" class="error-text">{{ row.error_message }}</span>
+                  <span v-else class="text-muted">-</span>
+                </template>
+              </el-table-column>
+            </el-table>
+            
+            <!-- 卡片视图（可选，保留作为备选） -->
+            <div class="status-grid" style="display: none;">
+              <div
+                v-for="(status, taskType) in statusSummary"
+                :key="taskType"
+                class="status-item"
               >
-                {{ getStatusText(row.status) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="last_run_time" label="最后执行时间" width="180" sortable>
-            <template #default="{ row }">
-              <span v-if="row.last_run_time">{{ formatTime(row.last_run_time) }}</span>
-              <span v-else class="text-muted">从未执行</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="last_success_time" label="最后成功时间" width="180" sortable>
-            <template #default="{ row }">
-              <span v-if="row.last_success_time">{{ formatTime(row.last_success_time) }}</span>
-              <span v-else class="text-muted">-</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="duration" label="执行时长" width="100" sortable>
-            <template #default="{ row }">
-              <span v-if="row.duration">{{ row.duration }}秒</span>
-              <span v-else class="text-muted">-</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="error_message" label="错误信息" min-width="200" show-overflow-tooltip>
-            <template #default="{ row }">
-              <span v-if="row.error_message" class="error-text">{{ row.error_message }}</span>
-              <span v-else class="text-muted">-</span>
-            </template>
-          </el-table-column>
-        </el-table>
-        
-        <!-- 卡片视图（可选，保留作为备选） -->
-        <div class="status-grid" style="display: none;">
-          <div
-            v-for="(status, taskType) in statusSummary"
-            :key="taskType"
-            class="status-item"
-          >
-            <div class="status-header">
-              <span class="task-name">{{ status.task_name }}</span>
-              <el-tag
-                :type="getStatusType(status.status)"
-                size="small"
-              >
-                {{ getStatusText(status.status) }}
-              </el-tag>
-            </div>
-            <div class="status-details">
-              <div v-if="status.last_run_time" class="detail-item">
-                <span class="label">最后执行:</span>
-                <span class="value">{{ formatTime(status.last_run_time) }}</span>
-              </div>
-              <div v-else class="detail-item">
-                <span class="label">最后执行:</span>
-                <span class="value text-muted">从未执行</span>
-              </div>
-              <div v-if="status.last_success_time" class="detail-item">
-                <span class="label">最后成功:</span>
-                <span class="value">{{ formatTime(status.last_success_time) }}</span>
-              </div>
-              <div v-if="status.duration" class="detail-item">
-                <span class="label">执行时长:</span>
-                <span class="value">{{ status.duration }}秒</span>
-              </div>
-              <div v-if="status.error_message" class="detail-item error">
-                <span class="label">错误信息:</span>
-                <span class="value">{{ status.error_message }}</span>
+                <div class="status-header">
+                  <span class="task-name">{{ status.task_name }}</span>
+                  <el-tag
+                    :type="getStatusType(status.status)"
+                    size="small"
+                  >
+                    {{ getStatusText(status.status) }}
+                  </el-tag>
+                </div>
+                <div class="status-details">
+                  <div v-if="status.last_run_time" class="detail-item">
+                    <span class="label">最后执行:</span>
+                    <span class="value">{{ formatTime(status.last_run_time) }}</span>
+                  </div>
+                  <div v-else class="detail-item">
+                    <span class="label">最后执行:</span>
+                    <span class="value text-muted">从未执行</span>
+                  </div>
+                  <div v-if="status.last_success_time" class="detail-item">
+                    <span class="label">最后成功:</span>
+                    <span class="value">{{ formatTime(status.last_success_time) }}</span>
+                  </div>
+                  <div v-if="status.duration" class="detail-item">
+                    <span class="label">执行时长:</span>
+                    <span class="value">{{ status.duration }}秒</span>
+                  </div>
+                  <div v-if="status.error_message" class="detail-item error">
+                    <span class="label">错误信息:</span>
+                    <span class="value">{{ status.error_message }}</span>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      </el-card>
+          </el-card>
+        </el-tab-pane>
 
-      <!-- 执行历史列表 -->
-      <el-card shadow="never" class="execution-history" style="margin-top: 20px">
-        <template #header>
-          <span>执行历史</span>
-        </template>
+        <!-- 执行历史 Tab -->
+        <el-tab-pane label="执行历史" name="history">
+          <el-card shadow="never" class="execution-history">
+            <template #header>
+              <span>执行历史</span>
+            </template>
 
         <!-- 筛选条件 -->
         <el-form :inline="true" :model="filterForm" class="filter-form">
@@ -217,8 +223,10 @@
             @size-change="loadExecutions"
             @current-change="loadExecutions"
           />
-        </div>
-      </el-card>
+          </div>
+          </el-card>
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
 
     <!-- 手动执行任务对话框 -->
@@ -352,6 +360,7 @@ import { Plus, Refresh } from '@element-plus/icons-vue'
 import { taskApi, type TaskExecution, type TaskStatusSummary, type TaskStatus } from '@/api/task'
 import dayjs from 'dayjs'
 
+const activeTab = ref('status')
 const loading = ref(false)
 const loadingStatus = ref(false)
 const running = ref(false)
@@ -366,15 +375,22 @@ const taskNames = ref<Record<string, string>>({})
 
 // 将状态汇总转换为列表格式，方便表格显示
 const statusSummaryList = computed(() => {
-  return Object.entries(statusSummary.value).map(([taskType, status]) => ({
-    task_type: taskType,
-    task_name: status.task_name,
-    status: status.status,
-    last_run_time: status.last_run_time,
-    last_success_time: status.last_success_time,
-    duration: status.duration,
-    error_message: status.error_message,
-  }))
+  return Object.entries(statusSummary.value).map(([taskType, status]) => {
+    // 格式化任务名称为"中文(英文)"格式
+    const chineseName = status.task_name || taskNames.value[taskType] || taskType
+    const englishName = taskType
+    const displayName = `${chineseName}(${englishName})`
+    
+    return {
+      task_type: taskType,
+      task_name: displayName,
+      status: status.status,
+      last_run_time: status.last_run_time,
+      last_success_time: status.last_success_time,
+      duration: status.duration,
+      error_message: status.error_message,
+    }
+  })
 })
 
 const filterForm = ref({
@@ -504,6 +520,14 @@ const formatTime = (time: string): string => {
     return dayjs(time).format('YYYY-MM-DD HH:mm:ss')
   } catch {
     return time
+  }
+}
+
+const handleTabChange = (tabName: string) => {
+  if (tabName === 'status') {
+    loadStatusSummary()
+  } else if (tabName === 'history') {
+    loadExecutions()
   }
 }
 

@@ -7,6 +7,7 @@
 // 按显示顺序排列
 export const MAIN_INDEX_CODES: Record<string, string> = {
   '000001': '上证指数',
+  '000016': '上证50',
   '399001': '深证成指',
   '399006': '创业板指',
   '000688': '科创50',
@@ -21,6 +22,7 @@ export const MAIN_INDEX_CODES: Record<string, string> = {
 // 主要指数名称关键词（用于模糊匹配）
 export const MAIN_INDEX_KEYWORDS: string[] = [
   '上证指数',
+  '上证50',
   '深证成指',
   '深证指数',
   '创业板指',
@@ -37,6 +39,7 @@ export const MAIN_INDEX_KEYWORDS: string[] = [
 // 主要指数名称映射（名称 -> 代码）
 export const MAIN_INDEX_NAMES: Record<string, string> = {
   '上证指数': '000001',
+  '上证50': '000016',
   '深证成指': '399001',
   '深证指数': '399001',
   '创业板指': '399006',

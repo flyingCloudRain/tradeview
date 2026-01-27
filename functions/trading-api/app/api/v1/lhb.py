@@ -10,7 +10,7 @@ import math
 from app.database.session import get_db
 from app.services.lhb_service import LhbService
 from app.services.lhb_hot_service import LhbHotService
-from app.services.trader_service import TraderService
+from app.services.active_branch_service import ActiveBranchService
 from app.schemas.lhb import (
     LhbListResponse,
     LhbDetailFullResponse,
@@ -20,7 +20,8 @@ from app.schemas.lhb import (
     LhbHotListResponse,
     LhbInstitutionItemResponse,
     LhbHotInstitutionDetailResponse,
-    TraderResponse,
+    ActiveBranchResponse,
+    ActiveBranchListResponse,
 )
 from app.utils.date_utils import parse_date
 from app.config import settings
@@ -350,26 +351,97 @@ def get_lhb_institution_detail(
     return records
 
 
-@router.get("/traders", response_model=list[TraderResponse])
-def list_traders(db: Session = Depends(get_db)):
-    """游资主体及营业部列表（极简）"""
-    traders = TraderService.list_traders(db)
-    return traders
-
-
-@router.get("/traders/lookup", response_model=Optional[TraderResponse])
-def lookup_trader(
+@router.get("/active-branch", response_model=ActiveBranchListResponse)
+def get_active_branch_list(
+    date: Optional[str] = Query(None, description="日期，格式：YYYY-MM-DD；为空时返回最近一次同步的数据"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(settings.DEFAULT_PAGE_SIZE, ge=1, le=settings.MAX_PAGE_SIZE, description="每页数量"),
+    sort_by: Optional[str] = Query(None, description="排序字段，默认按net_amount"),
+    order: str = Query("desc", description="排序方向 asc/desc"),
+    institution_name: Optional[str] = Query(None, description="营业部名称（模糊查询）"),
     institution_code: Optional[str] = Query(None, description="营业部代码"),
-    institution_name: Optional[str] = Query(None, description="营业部名称"),
     db: Session = Depends(get_db)
 ):
-    """通过营业部代码/名称反查游资"""
-    trader = TraderService.get_trader_by_institution(
-        db=db,
-        institution_code=institution_code,
-        institution_name=institution_name,
-    )
-    return trader
+    """获取活跃营业部列表"""
+    import math
+    import sys
+    from fastapi import HTTPException
+    
+    try:
+        target_date = parse_date(date) if date else None
+        print(f"[ActiveBranch API] 收到请求: date={date}, target_date={target_date}, page={page}, page_size={page_size}, sort_by={sort_by}, order={order}, institution_name={institution_name}, institution_code={institution_code}")
+        sys.stdout.flush()
+        
+        items, total = ActiveBranchService.get_list(
+            db=db,
+            target_date=target_date,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            order=order if order in ("asc", "desc") else "desc",
+            institution_name=institution_name,
+            institution_code=institution_code,
+        )
+        
+        print(f"[ActiveBranch API] 查询返回: {len(items)} 条items, total: {total}")
+        sys.stdout.flush()
+        
+        # 转换为响应对象
+        def safe_float(value):
+            """安全转换为float，处理inf、-inf、NaN等异常值"""
+            import math
+            if value is None:
+                return None
+            try:
+                f = float(value)
+                if math.isinf(f) or math.isnan(f):
+                    return None
+                return f
+            except (ValueError, TypeError, OverflowError):
+                return None
+        
+        response_items = []
+        for idx, item in enumerate(items):
+            try:
+                response_item = ActiveBranchResponse(
+                    id=item.id,
+                    date=item.date,
+                    institution_name=item.institution_name,
+                    institution_code=item.institution_code,
+                    buy_stock_count=item.buy_stock_count,
+                    sell_stock_count=item.sell_stock_count,
+                    buy_amount=safe_float(item.buy_amount),
+                    sell_amount=safe_float(item.sell_amount),
+                    net_amount=safe_float(item.net_amount),
+                    buy_stocks=item.buy_stocks,
+                    created_at=item.created_at,
+                )
+                response_items.append(response_item)
+            except Exception as e:
+                print(f"[ActiveBranch API] 转换第 {idx+1} 条数据失败: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                sys.stdout.flush()
+                continue
+        
+        print(f"[ActiveBranch API] 返回结果: {len(response_items)} 条, total: {total}")
+        sys.stdout.flush()
+        
+        total_pages = math.ceil(total / page_size) if total > 0 else 0
+        
+        return ActiveBranchListResponse(
+            items=response_items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages
+        )
+    except Exception as e:
+        print(f"[ActiveBranch API] 错误: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        sys.stdout.flush()
+        raise HTTPException(status_code=500, detail=f"获取活跃营业部列表失败: {str(e)}")
 
 
 @router.get("/{stock_code}", response_model=LhbDetailFullResponse)

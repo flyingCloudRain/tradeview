@@ -12,6 +12,7 @@ from app.schemas.task import (
     TaskExecutionResponse,
     TaskRunRequest,
     TaskRunResponse,
+    SchedulerStatusResponse,
 )
 from app.models.task_execution import TaskStatus
 
@@ -104,4 +105,12 @@ def get_task_types():
         "task_types": list(TaskService.TASK_NAMES.keys()),
         "task_names": TaskService.TASK_NAMES,
     }
+
+
+@router.get("/scheduler/status", response_model=SchedulerStatusResponse)
+def get_scheduler_status():
+    """获取调度器状态和下次执行时间"""
+    from app.tasks.scheduler import get_scheduler_status
+    status = get_scheduler_status()
+    return SchedulerStatusResponse(**status)
 

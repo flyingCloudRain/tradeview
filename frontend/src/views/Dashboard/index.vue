@@ -47,15 +47,15 @@
         <div class="stats-grid">
           <el-card class="stat-card" shadow="hover">
             <div class="stat-content">
-              <div class="stat-label">涨停数量</div>
+              <div class="stat-label">涨停个股</div>
               <div class="stat-value highlight">{{ stats.ztPoolCount }}</div>
             </div>
           </el-card>
 
           <el-card class="stat-card" shadow="hover">
             <div class="stat-content">
-              <div class="stat-label">龙虎榜数量</div>
-              <div class="stat-value">{{ stats.lhbCount }}</div>
+              <div class="stat-label">跌停个股</div>
+              <div class="stat-value negative">{{ stats.ztPoolDownCount }}</div>
             </div>
           </el-card>
 
@@ -73,6 +73,7 @@
             </div>
           </el-card>
         </div>
+
       </div>
 
     </el-card>
@@ -84,7 +85,6 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  Trophy,
   TrendCharts,
   User,
   DataLine,
@@ -102,8 +102,8 @@ const date = ref(dayjs().format('YYYY-MM-DD'))
 const loading = ref(false)
 const indexData = ref<any[]>([])
 const stats = ref({
-  lhbCount: 0,
   ztPoolCount: 0,
+  ztPoolDownCount: 0,
   sectorStats: {
     riseCount: 0,
     fallCount: 0,
@@ -120,8 +120,8 @@ const fetchData = async () => {
     const data = await dashboardApi.getStats(date.value)
     indexData.value = data.indexData
     stats.value = {
-      lhbCount: data.lhbCount,
       ztPoolCount: data.ztPoolCount,
+      ztPoolDownCount: data.ztPoolDownCount,
       sectorStats: data.sectorStats,
     }
   } catch (error) {
@@ -162,16 +162,18 @@ onMounted(() => {
 
 .index-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
+  flex-wrap: nowrap;
+  gap: 12px;
+  overflow-x: auto;
 }
 
 .index-item {
-  flex: 1;
-  min-width: 150px;
+  flex: 0 0 auto;
+  min-width: 120px;
   padding: 10px;
   border: 1px solid #e4e7ed;
   border-radius: 4px;
+  white-space: nowrap;
 }
 
 .index-name {

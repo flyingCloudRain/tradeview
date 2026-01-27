@@ -28,11 +28,15 @@ export interface ZtPoolItem {
   concepts?: StockConcept[]  // 概念板块数组
   limit_up_reason?: string
   is_lhb?: boolean  // 是否属于当日龙虎榜
+  limit_up_count?: number  // 涨停次数（日期范围查询时）
 }
 
 export interface ZtPoolListParams {
-  date: string
+  date?: string  // 单日查询（兼容旧接口）
+  start_date?: string  // 开始日期（日期范围查询）
+  end_date?: string  // 结束日期（日期范围查询）
   stock_code?: string
+  stock_name?: string  // 股票名称（模糊匹配）
   concept?: string  // 保留用于兼容旧接口
   industry?: string
   consecutive_limit_count?: number
@@ -65,11 +69,28 @@ export interface ZtPoolAnalysis {
 export const ztPoolApi = {
   getList: async (params: ZtPoolListParams): Promise<ZtPoolListResponse> => {
     // 清理参数，只传递有效值
-    const cleanParams: Record<string, any> = {
-      date: params.date,
+    const cleanParams: Record<string, any> = {}
+    
+    // 涨停股：必须使用日期范围查询
+    if (params.start_date && params.end_date) {
+      cleanParams.start_date = params.start_date
+      cleanParams.end_date = params.end_date
+    } else {
+      // 如果没有日期范围，尝试使用单日（兼容旧接口，但后端可能不支持）
+      if (params.date) {
+        // 如果提供了单日，将其作为日期范围（同一天）
+        cleanParams.start_date = params.date
+        cleanParams.end_date = params.date
+      } else {
+        throw new Error('涨停股查询必须提供开始日期和结束日期')
+      }
     }
+    
     if (params.stock_code) {
       cleanParams.stock_code = params.stock_code
+    }
+    if (params.stock_name && params.stock_name.trim()) {
+      cleanParams.stock_name = params.stock_name.trim()
     }
     if (params.concept) {
       cleanParams.concept = params.concept
@@ -123,8 +144,27 @@ export const ztPoolApi = {
 
   // 跌停池
   getDownList: async (params: ZtPoolListParams): Promise<ZtPoolListResponse> => {
-    const cleanParams: Record<string, any> = { date: params.date }
+    const cleanParams: Record<string, any> = {}
+    
+    // 日期范围查询优先级高于单日期查询
+    if (params.start_date && params.end_date) {
+      cleanParams.start_date = params.start_date
+      cleanParams.end_date = params.end_date
+      // 确保不传递date参数
+      delete (params as any).date
+    } else if (params.date) {
+      // 如果提供了单日，将其作为日期范围（同一天）
+      cleanParams.start_date = params.date
+      cleanParams.end_date = params.date
+    } else {
+      // 如果没有提供日期，使用当前日期作为默认值
+      const today = new Date().toISOString().split('T')[0]
+      cleanParams.start_date = today
+      cleanParams.end_date = today
+    }
+    
     if (params.stock_code) cleanParams.stock_code = params.stock_code
+    if (params.stock_name) cleanParams.stock_name = params.stock_name
     if (params.concept) cleanParams.concept = params.concept
     if (params.industry) cleanParams.industry = params.industry
     if (params.consecutive_limit_count !== undefined) cleanParams.consecutive_limit_count = params.consecutive_limit_count

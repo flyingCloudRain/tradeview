@@ -1,10 +1,10 @@
 """
 AKShare工具函数
 """
-import akshare as ak
 import pandas as pd
-from typing import Optional
-from datetime import date
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def safe_akshare_call(func, *args, **kwargs):
@@ -17,6 +17,6 @@ def safe_akshare_call(func, *args, **kwargs):
             return None
         return result
     except Exception as e:
-        print(f"AKShare调用失败: {func.__name__}, 错误: {str(e)}")
+        logger.error(f"AKShare调用失败: {func.__name__}, 错误: {str(e)}")
         return None
 

@@ -59,3 +59,22 @@ class TaskRunResponse(BaseModel):
     message: str
     task_types: List[str]
 
+
+class ScheduledJobInfo(BaseModel):
+    """定时任务信息"""
+    id: str = Field(..., description="任务ID")
+    name: str = Field(..., description="任务名称")
+    next_run_time: Optional[str] = Field(None, description="下次执行时间（ISO格式）")
+    next_run_time_str: Optional[str] = Field(None, description="下次执行时间（可读格式）")
+    trigger: str = Field(..., description="触发器描述")
+    func: str = Field(..., description="执行函数名")
+
+
+class SchedulerStatusResponse(BaseModel):
+    """调度器状态响应"""
+    running: bool = Field(..., description="是否运行中")
+    state: str = Field(..., description="状态：running/stopped")
+    jobs: List[ScheduledJobInfo] = Field(..., description="任务列表")
+    job_count: int = Field(..., description="任务数量")
+    message: Optional[str] = Field(None, description="状态消息")
+

@@ -10,7 +10,7 @@ import pandas as pd
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, desc, asc, func, distinct
 
-from app.models.lhb import LhbHotInstitution, LhbInstitution, TraderBranch, LhbDetail
+from app.models.lhb import LhbHotInstitution, LhbInstitution, LhbDetail
 from app.schemas.lhb import LhbHotInstitutionDetailResponse
 from app.utils.akshare_utils import safe_akshare_call
 import akshare as ak
@@ -188,15 +188,8 @@ class LhbHotService:
                 print(f"日期 {target_date} 无有效机构数据")
                 return False
             
-            # 查找机构代码映射（从 TraderBranch 表）
+            # 机构代码映射（已移除TraderBranch表，不再使用映射）
             institution_code_map = {}
-            trader_branches = db.query(TraderBranch).filter(
-                TraderBranch.institution_code.isnot(None),
-                TraderBranch.institution_code != ""
-            ).all()
-            for branch in trader_branches:
-                if branch.institution_name not in institution_code_map:
-                    institution_code_map[branch.institution_name] = branch.institution_code
             
             saved = 0
             for inst_name, stats in institution_stats.items():

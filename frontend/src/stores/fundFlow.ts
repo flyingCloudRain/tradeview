@@ -6,6 +6,10 @@ import {
   type FundFlowListParams,
   type FundFlowConceptItem,
   type FundFlowIndustryItem,
+  type ConceptFundFlowQueryParams,
+  type ConceptFundFlowQueryResponse,
+  type ConceptFundFlowFilterRequest,
+  type ConceptFundFlowFilterResponse,
 } from '@/api/fundFlow'
 
 export const useFundFlowStore = defineStore('fundFlow', () => {
@@ -13,6 +17,12 @@ export const useFundFlowStore = defineStore('fundFlow', () => {
   const loading = ref(false)
   const conceptList = ref<FundFlowConceptItem[]>([])
   const conceptLoading = ref(false)
+  const conceptPagination = ref({
+    current: 1,
+    pageSize: 50,
+    total: 0,
+  })
+  const conceptQueryParams = ref<Partial<ConceptFundFlowQueryParams>>({})
   const industryList = ref<FundFlowIndustryItem[]>([])
   const industryLoading = ref(false)
   const pagination = ref({
@@ -57,16 +67,59 @@ export const useFundFlowStore = defineStore('fundFlow', () => {
     pagination.value.current = 1
   }
 
-  const fetchConcept = async (limit = 50, date?: string) => {
+  const fetchConcept = async (params: ConceptFundFlowQueryParams) => {
     conceptLoading.value = true
     try {
-      conceptList.value = await fundFlowApi.getConcept(limit, date)
+      const response = await fundFlowApi.getConcept(params)
+      
+      // 日期范围查询返回对象，单日期查询返回数组
+      if (Array.isArray(response)) {
+        // 单日期查询
+        conceptList.value = response
+        conceptPagination.value.total = response.length
+        conceptPagination.value.current = 1
+        conceptPagination.value.pageSize = params.limit || 50
+      } else {
+        // 日期范围查询
+        conceptList.value = response.items || []
+        conceptPagination.value.total = response.total || 0
+        conceptPagination.value.current = response.page || 1
+        conceptPagination.value.pageSize = response.page_size || 50
+      }
+      
+      conceptQueryParams.value = params
     } catch (error) {
       console.error('获取概念资金流失败:', error)
       conceptList.value = []
+      conceptPagination.value.total = 0
+      throw error
     } finally {
       conceptLoading.value = false
     }
+  }
+
+  const filterConcept = async (request: ConceptFundFlowFilterRequest) => {
+    conceptLoading.value = true
+    try {
+      const response: ConceptFundFlowFilterResponse = await fundFlowApi.filterConcept(request)
+      conceptList.value = response.items
+      conceptPagination.value.total = response.total
+      conceptPagination.value.current = response.page
+      conceptPagination.value.pageSize = response.page_size
+      return response
+    } catch (error) {
+      console.error('概念资金流筛选失败:', error)
+      conceptList.value = []
+      conceptPagination.value.total = 0
+      throw error
+    } finally {
+      conceptLoading.value = false
+    }
+  }
+
+  const setConceptPagination = (page: number, pageSize: number) => {
+    conceptPagination.value.current = page
+    conceptPagination.value.pageSize = pageSize
   }
 
   const fetchIndustry = async (date: string, limit = 200) => {
@@ -96,6 +149,8 @@ export const useFundFlowStore = defineStore('fundFlow', () => {
     loading,
     conceptList,
     conceptLoading,
+    conceptPagination,
+    conceptQueryParams,
     industryList,
     industryLoading,
     pagination,
@@ -103,9 +158,11 @@ export const useFundFlowStore = defineStore('fundFlow', () => {
     sortParams,
     fetchList,
     fetchConcept,
+    filterConcept,
     fetchIndustry,
     setFilters,
     setPagination,
+    setConceptPagination,
     setSortParams,
   }
 })

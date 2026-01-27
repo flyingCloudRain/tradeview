@@ -6,6 +6,8 @@ from sqlalchemy import and_, desc, asc, func
 from typing import Optional, List
 from datetime import date
 import pandas as pd
+import math
+import decimal
 
 from app.models.lhb import LhbDetail, LhbInstitution
 from app.utils.akshare_utils import safe_akshare_call
@@ -29,9 +31,9 @@ class LhbService:
         """
         获取龙虎榜列表（优化版本）
         """
-        import sys
-        print(f"[LhbService] 查询参数: date={target_date}, stock_code={stock_code}, stock_name={stock_name}, page={page}, page_size={page_size}")
-        sys.stdout.flush()
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"查询参数: date={target_date}, stock_code={stock_code}, stock_name={stock_name}, page={page}, page_size={page_size}")
         
         try:
             # 构建基础查询
@@ -502,4 +504,127 @@ class LhbService:
             import traceback
             traceback.print_exc()
             return SyncResult.failure_result(str(e), error_msg)
+    
+    @staticmethod
+    def get_lhb_stocks_statistics(
+        db: Session,
+        start_date: date,
+        end_date: date,
+        stock_code: Optional[str] = None,
+        stock_name: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+        sort_by: Optional[str] = None,
+        order: str = "desc"
+    ) -> tuple[List[dict], int]:
+        """
+        获取时间跨度内龙虎榜上榜个股统计
+        统计每个股票的上榜次数和净流入总额
+        
+        Returns:
+            tuple[List[dict], int]: (统计结果列表, 总数)
+        """
+        try:
+            # 构建基础查询
+            query = db.query(LhbDetail).filter(
+                LhbDetail.date >= start_date,
+                LhbDetail.date <= end_date
+            )
+            
+            # 添加股票代码过滤
+            if stock_code and stock_code.strip():
+                query = query.filter(LhbDetail.stock_code == stock_code.strip())
+            
+            # 添加股票名称模糊查询
+            if stock_name and stock_name.strip():
+                stock_name_clean = stock_name.strip()
+                query = query.filter(func.lower(LhbDetail.stock_name).like(f"%{stock_name_clean.lower()}%"))
+            
+            # 查询所有符合条件的记录
+            all_records = query.all()
+            
+            # 按股票代码分组统计
+            stock_stats = {}
+            for record in all_records:
+                stock_key = record.stock_code
+                if stock_key not in stock_stats:
+                    stock_stats[stock_key] = {
+                        'stock_code': record.stock_code,
+                        'stock_name': record.stock_name,
+                        'appear_count': 0,
+                        'total_net_buy_amount': 0.0,
+                        'total_buy_amount': 0.0,
+                        'total_sell_amount': 0.0,
+                        'dates': []  # 记录上榜日期
+                    }
+                
+                stock_stats[stock_key]['appear_count'] += 1
+                stock_stats[stock_key]['dates'].append(record.date)
+                
+                # 累加净买入额（安全处理None值）
+                if record.net_buy_amount is not None:
+                    try:
+                        net_amount = float(record.net_buy_amount)
+                        if not (math.isnan(net_amount) or math.isinf(net_amount)):
+                            stock_stats[stock_key]['total_net_buy_amount'] += net_amount
+                    except (ValueError, TypeError, decimal.InvalidOperation):
+                        pass
+                
+                # 累加买入额
+                if record.buy_amount is not None:
+                    try:
+                        buy_amount = float(record.buy_amount)
+                        if not (math.isnan(buy_amount) or math.isinf(buy_amount)):
+                            stock_stats[stock_key]['total_buy_amount'] += buy_amount
+                    except (ValueError, TypeError, decimal.InvalidOperation):
+                        pass
+                
+                # 累加卖出额
+                if record.sell_amount is not None:
+                    try:
+                        sell_amount = float(record.sell_amount)
+                        if not (math.isnan(sell_amount) or math.isinf(sell_amount)):
+                            stock_stats[stock_key]['total_sell_amount'] += sell_amount
+                    except (ValueError, TypeError, decimal.InvalidOperation):
+                        pass
+            
+            # 转换为列表
+            statistics_list = []
+            for stock_key, stats in stock_stats.items():
+                statistics_list.append({
+                    'stock_code': stats['stock_code'],
+                    'stock_name': stats['stock_name'],
+                    'appear_count': stats['appear_count'],
+                    'total_net_buy_amount': round(stats['total_net_buy_amount'], 2),
+                    'total_buy_amount': round(stats['total_buy_amount'], 2),
+                    'total_sell_amount': round(stats['total_sell_amount'], 2),
+                    'first_date': min(stats['dates']) if stats['dates'] else None,
+                    'last_date': max(stats['dates']) if stats['dates'] else None,
+                })
+            
+            # 排序
+            if sort_by == 'appear_count':
+                statistics_list.sort(key=lambda x: x['appear_count'], reverse=(order == 'desc'))
+            elif sort_by == 'total_net_buy_amount':
+                statistics_list.sort(key=lambda x: x['total_net_buy_amount'], reverse=(order == 'desc'))
+            elif sort_by == 'stock_code':
+                statistics_list.sort(key=lambda x: x['stock_code'], reverse=(order == 'desc'))
+            elif sort_by == 'stock_name':
+                statistics_list.sort(key=lambda x: x['stock_name'], reverse=(order == 'desc'))
+            else:
+                # 默认按上榜次数倒序
+                statistics_list.sort(key=lambda x: x['appear_count'], reverse=True)
+            
+            # 分页
+            total = len(statistics_list)
+            offset = (page - 1) * page_size
+            paginated_list = statistics_list[offset:offset + page_size]
+            
+            return paginated_list, total
+            
+        except Exception as e:
+            print(f"[LhbService] 统计查询失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return [], 0
 

@@ -72,39 +72,58 @@ class LhbHotInstitution(BaseModel):
     )
 
 
-class Trader(BaseModel):
-    """游资主体"""
-    __tablename__ = "trader"
+class InstitutionTradingStatistics(BaseModel):
+    """机构交易统计表（从 stock_lhb_jgmmtj_em 获取）"""
+    __tablename__ = "institution_trading_statistics"
     
-    name = Column(String(200), nullable=False, unique=True, index=True)
-    aka = Column(Text, nullable=True, comment="描述")
-    
-    branches = relationship("TraderBranch", back_populates="trader", cascade="all, delete-orphan")
-
-
-class TraderBranch(BaseModel):
-    """游资-营业部映射（极简）"""
-    __tablename__ = "trader_branch"
-    
-    trader_id = Column(Integer, ForeignKey("trader.id"), nullable=False, index=True)
-    institution_name = Column(String(200), nullable=False, index=True)
-    institution_code = Column(String(50), nullable=True, index=True)
-    
-    trader = relationship("Trader", back_populates="branches")
+    date = Column(Date, nullable=False, index=True, comment="上榜日期")
+    stock_code = Column(String(10), nullable=False, index=True, comment="股票代码")
+    stock_name = Column(String(50), nullable=False, comment="股票名称")
+    close_price = Column(Numeric(10, 2), nullable=True, comment="收盘价")
+    change_percent = Column(Numeric(5, 2), nullable=True, comment="涨跌幅")
+    buyer_institution_count = Column(Integer, nullable=True, comment="买方机构数")
+    seller_institution_count = Column(Integer, nullable=True, comment="卖方机构数")
+    institution_buy_amount = Column(Numeric(18, 2), nullable=True, comment="机构买入总额")
+    institution_sell_amount = Column(Numeric(18, 2), nullable=True, comment="机构卖出总额")
+    institution_net_buy_amount = Column(Numeric(18, 2), nullable=True, comment="机构买入净额")
+    market_total_amount = Column(Numeric(18, 2), nullable=True, comment="市场总成交额")
+    net_buy_ratio = Column(Numeric(8, 4), nullable=True, comment="机构净买额占总成交额比")
+    turnover_rate = Column(Numeric(8, 4), nullable=True, comment="换手率")
+    circulation_market_value = Column(Numeric(18, 2), nullable=True, comment="流通市值")
+    reason = Column(String(200), nullable=True, comment="上榜原因")
     
     __table_args__ = (
-        UniqueConstraint("trader_id", "institution_name", name="uq_trader_branch_name"),
-        {"comment": "游资与营业部映射表（极简）"},
+        UniqueConstraint("date", "stock_code", name="uq_institution_trading_statistics"),
+        {"comment": "机构交易统计表"},
     )
 
 
-class TraderBranchHistory(BaseModel):
-    """游资营业部历史交易明细"""
-    __tablename__ = "trader_branch_history"
+class ActiveBranch(BaseModel):
+    """活跃营业部表（从 stock_lhb_hyyyb_em 获取）"""
+    __tablename__ = "active_branch"
     
-    trader_branch_id = Column(Integer, ForeignKey("trader_branch.id"), nullable=False, index=True)
-    institution_code = Column(String(50), nullable=True, index=True, comment="营业部代码")
+    date = Column(Date, nullable=False, index=True, comment="上榜日期")
     institution_name = Column(String(200), nullable=False, index=True, comment="营业部名称")
+    institution_code = Column(String(50), nullable=True, index=True, comment="营业部代码")
+    buy_stock_count = Column(Integer, nullable=True, comment="买入个股数")
+    sell_stock_count = Column(Integer, nullable=True, comment="卖出个股数")
+    buy_amount = Column(Numeric(18, 2), nullable=True, comment="买入总金额")
+    sell_amount = Column(Numeric(18, 2), nullable=True, comment="卖出总金额")
+    net_amount = Column(Numeric(18, 2), nullable=True, comment="总买卖净额")
+    buy_stocks = Column(Text, nullable=True, comment="买入股票列表")
+    
+    __table_args__ = (
+        UniqueConstraint("date", "institution_code", name="uq_active_branch"),
+        {"comment": "活跃营业部表"},
+    )
+
+
+class ActiveBranchDetail(BaseModel):
+    """活跃营业部交易详情表（从 stock_lhb_yyb_detail_em 获取，2026年1月开始存储）"""
+    __tablename__ = "active_branch_detail"
+    
+    institution_code = Column(String(50), nullable=False, index=True, comment="营业部代码")
+    institution_name = Column(String(200), nullable=True, index=True, comment="营业部名称")
     date = Column(Date, nullable=False, index=True, comment="交易日期")
     stock_code = Column(String(10), nullable=False, index=True, comment="股票代码")
     stock_name = Column(String(50), nullable=False, comment="股票名称")
@@ -122,7 +141,7 @@ class TraderBranchHistory(BaseModel):
     after_30d = Column(Numeric(8, 2), nullable=True, comment="30日后涨跌幅")
     
     __table_args__ = (
-        UniqueConstraint("trader_branch_id", "date", "stock_code", name="uq_trader_branch_history"),
-        {"comment": "游资营业部历史交易明细表"},
+        UniqueConstraint("institution_code", "date", "stock_code", name="uq_active_branch_detail"),
+        {"comment": "活跃营业部交易详情表"},
     )
 

@@ -34,6 +34,8 @@ def get_limit_up_board_list(
     limit_up_reason: Optional[str] = Query(None, description="涨停原因筛选（模糊查询）"),
     concept_id: Optional[int] = Query(None, description="概念板块ID筛选"),
     concept_name: Optional[str] = Query(None, description="概念板块名称筛选"),
+    sort_by: Optional[str] = Query(None, description="排序字段，支持: date, board_name, stock_code, stock_name, board_count (板数), circulation_market_value, turnover_amount"),
+    order: str = Query("desc", pattern="^(asc|desc)$", description="排序方向，asc 或 desc"),
     db: Session = Depends(get_db)
 ):
     """获取涨停板分析列表"""
@@ -55,6 +57,8 @@ def get_limit_up_board_list(
         limit_up_reason=limit_up_reason,
         concept_id=concept_id,
         concept_name=concept_name,
+        sort_by=sort_by,
+        order=order,
     )
     
     total_pages = math.ceil(total / page_size) if total > 0 else 0
@@ -166,3 +170,18 @@ def get_board_statistics(
             raise HTTPException(status_code=400, detail="日期格式错误，应为 YYYY-MM-DD")
     
     return LimitUpBoardService.get_board_statistics(db, target_date)
+
+
+@router.get("/statistics/board-count", response_model=dict)
+def get_board_count_statistics(
+    date: Optional[str] = Query(None, description="日期，格式：YYYY-MM-DD"),
+    db: Session = Depends(get_db)
+):
+    """获取板数统计信息（一板、二板、三板、四板、五板以上）"""
+    target_date = None
+    if date:
+        target_date = parse_date(date)
+        if not target_date:
+            raise HTTPException(status_code=400, detail="日期格式错误，应为 YYYY-MM-DD")
+    
+    return LimitUpBoardService.get_board_count_statistics(db, target_date)

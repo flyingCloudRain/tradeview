@@ -124,24 +124,29 @@ class LhbHotInstitutionDetailResponse(BaseModel):
     after_30d: Optional[Decimal] = None
 
 
-class TraderBranchResponse(BaseModel):
-    """游资-营业部映射（支路）"""
+class ActiveBranchResponse(BaseModel):
+    """活跃营业部响应"""
     id: int
-    trader_id: int
+    date: date
     institution_name: str
     institution_code: Optional[str] = None
+    buy_stock_count: Optional[int] = None
+    sell_stock_count: Optional[int] = None
+    buy_amount: Optional[Decimal] = None
+    sell_amount: Optional[Decimal] = None
+    net_amount: Optional[Decimal] = None
+    buy_stocks: Optional[str] = None
+    created_at: datetime
     
     class Config:
         from_attributes = True
 
 
-class TraderResponse(BaseModel):
-    """游资主体及其营业部列表（极简）"""
-    id: int
-    name: str
-    aka: Optional[str] = None
-    branches: List[TraderBranchResponse] = Field(default_factory=list)
-    
-    class Config:
-        from_attributes = True
+class ActiveBranchListResponse(BaseModel):
+    """活跃营业部列表响应"""
+    items: List[ActiveBranchResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 

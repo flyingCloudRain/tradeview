@@ -11,9 +11,7 @@ export const useZtPoolStore = defineStore('ztPool', () => {
     pageSize: 20,
     total: 0,
   })
-  const filters = ref<ZtPoolListParams>({
-    date: '',
-  })
+  const filters = ref<ZtPoolListParams>({})
   const analysis = ref<any>(null)
 
   const fetchList = async (params?: Partial<ZtPoolListParams>) => {
@@ -31,6 +29,10 @@ export const useZtPoolStore = defineStore('ztPool', () => {
       }
       if (!queryParams.sort_by) {
         delete (queryParams as any).sort_by
+      }
+      // 清理date参数，优先使用start_date和end_date
+      if (queryParams.start_date && queryParams.end_date) {
+        delete (queryParams as any).date
       }
       const response =
         activeType.value === 'up'

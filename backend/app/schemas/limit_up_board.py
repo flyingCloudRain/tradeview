@@ -65,6 +65,20 @@ class LimitUpBoardBase(BaseModel):
     limit_up_reason: Optional[str] = Field(None, description="涨停原因（解析后的主要原因）")
     tags: Optional[List[str]] = Field(None, description="涨停标签列表（从关键字解析）")
     
+    # 新增字段
+    price_change_pct: Optional[float] = Field(None, description="涨跌幅（%，单位：%）")
+    latest_price: Optional[float] = Field(None, ge=0, description="最新价")
+    turnover: Optional[int] = Field(None, ge=0, description="成交额")
+    total_market_value: Optional[float] = Field(None, ge=0, description="总市值（亿元）")
+    turnover_rate: Optional[float] = Field(None, ge=0, description="换手率（%，单位：%）")
+    sealing_capital: Optional[int] = Field(None, ge=0, description="封板资金")
+    first_sealing_time: Optional[dt_time] = Field(None, description="首次封板时间（格式：09:25:00）")
+    last_sealing_time: Optional[dt_time] = Field(None, description="最后封板时间（格式：09:25:00）")
+    board_breaking_count: Optional[int] = Field(None, ge=0, description="炸板次数")
+    limit_up_statistics: Optional[str] = Field(None, max_length=100, description="涨停统计")
+    consecutive_board_count: Optional[int] = Field(None, ge=1, description="连板数（1为首板）")
+    industry: Optional[str] = Field(None, max_length=100, description="所属行业")
+    
     @field_validator('date', mode='before')
     @classmethod
     def parse_date(cls, v):
@@ -79,7 +93,7 @@ class LimitUpBoardBase(BaseModel):
                 raise ValueError(f'日期格式错误: {v}，应为 YYYY-MM-DD')
         return v
     
-    @field_validator('limit_up_time', mode='before')
+    @field_validator('limit_up_time', 'first_sealing_time', 'last_sealing_time', mode='before')
     @classmethod
     def parse_time(cls, v):
         """解析时间字符串"""
@@ -110,7 +124,7 @@ class LimitUpBoardBase(BaseModel):
         """序列化日期为字符串"""
         return value.strftime("%Y-%m-%d") if value else None
     
-    @field_serializer('limit_up_time')
+    @field_serializer('limit_up_time', 'first_sealing_time', 'last_sealing_time')
     def serialize_time(self, value: dt_time, _info) -> str:
         """序列化时间为字符串"""
         return value.strftime("%H:%M:%S") if value else None
@@ -136,7 +150,21 @@ class LimitUpBoardUpdate(BaseModel):
     tags: Optional[List[str]] = None
     concept_names: Optional[List[str]] = None
     
-    @field_validator('limit_up_time', mode='before')
+    # 新增字段
+    price_change_pct: Optional[float] = Field(None, description="涨跌幅（%，单位：%）")
+    latest_price: Optional[float] = Field(None, ge=0)
+    turnover: Optional[int] = Field(None, ge=0)
+    total_market_value: Optional[float] = Field(None, ge=0)
+    turnover_rate: Optional[float] = Field(None, ge=0, description="换手率（%，单位：%）")
+    sealing_capital: Optional[int] = Field(None, ge=0)
+    first_sealing_time: Optional[dt_time] = None
+    last_sealing_time: Optional[dt_time] = None
+    board_breaking_count: Optional[int] = Field(None, ge=0)
+    limit_up_statistics: Optional[str] = Field(None, max_length=100)
+    consecutive_board_count: Optional[int] = Field(None, ge=1)
+    industry: Optional[str] = Field(None, max_length=100)
+    
+    @field_validator('limit_up_time', 'first_sealing_time', 'last_sealing_time', mode='before')
     @classmethod
     def parse_time(cls, v):
         """解析时间字符串"""

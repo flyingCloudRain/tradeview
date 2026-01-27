@@ -8,11 +8,14 @@ import math
 
 from app.database.session import get_db
 from app.services.stock_concept_service import StockConceptService, StockConceptMappingService
+from app.models.stock_concept import StockConcept
 from app.schemas.stock_concept import (
     StockConceptCreate,
     StockConceptUpdate,
     StockConceptResponse,
     StockConceptListResponse,
+    StockConceptTree,
+    ConceptInfo,
     StockConceptMappingRequest,
     StockConceptMappingResponse,
     BatchStockConceptMappingRequest,
@@ -27,8 +30,10 @@ router = APIRouter()
 def get_stock_concepts(
     name: Optional[str] = Query(None, description="概念板块名称（模糊搜索）"),
     code: Optional[str] = Query(None, description="概念板块代码（精确搜索）"),
+    level: Optional[int] = Query(None, ge=1, le=3, description="层级筛选：1=一级，2=二级，3=三级"),
+    parent_id: Optional[int] = Query(None, description="父概念ID筛选"),
     page: int = Query(1, ge=1, description="页码"),
-    page_size: int = Query(100, ge=1, le=500, description="每页数量"),
+    page_size: int = Query(100, ge=1, le=1000, description="每页数量"),
     db: Session = Depends(get_db)
 ):
     """获取概念板块列表"""
@@ -36,6 +41,8 @@ def get_stock_concepts(
         db=db,
         name=name,
         code=code,
+        level=level,
+        parent_id=parent_id,
         page=page,
         page_size=page_size,
     )
@@ -49,6 +56,97 @@ def get_stock_concepts(
         page_size=page_size,
         total_pages=total_pages
     )
+
+
+@router.get("/tree", response_model=List[StockConceptTree])
+def get_concept_tree(
+    max_level: int = Query(3, ge=1, le=3, description="最大层级深度"),
+    db: Session = Depends(get_db)
+):
+    """获取概念树形结构"""
+    def build_tree_node(concept: StockConcept, current_level: int) -> StockConceptTree:
+        """递归构建树节点"""
+        node = StockConceptTree.model_validate(concept)
+        
+        if current_level < max_level:
+            # 查询子概念
+            children = db.query(StockConcept).filter(
+                StockConcept.parent_id == concept.id
+            ).order_by(
+                StockConcept.sort_order.asc(),
+                StockConcept.name.asc()
+            ).all()
+            
+            node.children = [build_tree_node(child, current_level + 1) for child in children]
+        
+        return node
+    
+    # 查询所有一级概念
+    level1_concepts = StockConceptService.get_tree(db, max_level)
+    
+    return [build_tree_node(concept, 1) for concept in level1_concepts]
+
+
+@router.get("/{concept_id}/ancestors", response_model=List[StockConceptResponse])
+def get_concept_ancestors(
+    concept_id: int,
+    db: Session = Depends(get_db)
+):
+    """获取概念的所有祖先概念（向上查询）"""
+    concept = StockConceptService.get_by_id(db, concept_id)
+    if not concept:
+        raise HTTPException(status_code=404, detail="概念板块不存在")
+    
+    ancestors = concept.get_all_ancestors()
+    return ancestors
+
+
+@router.get("/{concept_id}/descendants", response_model=List[StockConceptResponse])
+def get_concept_descendants(
+    concept_id: int,
+    include_self: bool = Query(False, description="是否包含自身"),
+    db: Session = Depends(get_db)
+):
+    """获取概念的所有后代概念（向下查询）"""
+    concept = StockConceptService.get_by_id(db, concept_id)
+    if not concept:
+        raise HTTPException(status_code=404, detail="概念板块不存在")
+    
+    descendants = concept.get_all_descendants()
+    if include_self:
+        descendants.insert(0, concept)
+    
+    return descendants
+
+
+@router.get("/{concept_id}/stocks", response_model=List[str])
+def get_concept_stocks(
+    concept_id: int,
+    include_descendants: bool = Query(True, description="是否包含子概念的个股"),
+    db: Session = Depends(get_db)
+):
+    """获取概念关联的所有个股（可包含子概念）"""
+    concept = StockConceptService.get_by_id(db, concept_id)
+    if not concept:
+        raise HTTPException(status_code=404, detail="概念板块不存在")
+    
+    # 扩展概念ID
+    if include_descendants:
+        concept_ids = StockConceptService.expand_concept_ids(
+            db=db,
+            concept_ids=[concept_id],
+            include_descendants=True
+        )
+    else:
+        concept_ids = [concept_id]
+    
+    # 查询关联的股票名称
+    from app.models.stock_concept import StockConceptMapping
+    stock_names = db.query(StockConceptMapping.stock_name).distinct().filter(
+        StockConceptMapping.concept_id.in_(concept_ids)
+    ).all()
+    
+    return [row[0] for row in stock_names]
 
 
 @router.get("/{concept_id}", response_model=StockConceptResponse)
@@ -138,10 +236,16 @@ def set_stock_concepts(
 @router.get("/mapping/{stock_name}", response_model=StockConceptMappingResponse)
 def get_stock_concepts(
     stock_name: str,
+    level: Optional[int] = Query(None, ge=1, le=3, description="按层级筛选"),
     db: Session = Depends(get_db)
 ):
-    """获取股票的概念板块列表"""
-    concepts = StockConceptMappingService.get_stock_concepts(db, stock_name)
+    """获取股票的概念板块列表（包含层级信息）"""
+    concepts = StockConceptService.get_stock_concepts_with_hierarchy(db, stock_name)
+    
+    # 按层级筛选
+    if level is not None:
+        concepts = [c for c in concepts if c.level == level]
+    
     return StockConceptMappingResponse(
         stock_name=stock_name,
         concepts=concepts
@@ -197,4 +301,68 @@ def remove_stock_concept(
     )
     if not success:
         raise HTTPException(status_code=404, detail="关联关系不存在")
+    return None
+
+
+@router.post("/{concept_id}/stocks", response_model=StockConceptResponse)
+def add_stock_to_concept(
+    concept_id: int,
+    stock_name: str = Query(..., description="股票名称"),
+    db: Session = Depends(get_db)
+):
+    """为概念添加个股"""
+    concept = StockConceptService.get_by_id(db, concept_id)
+    if not concept:
+        raise HTTPException(status_code=404, detail="概念板块不存在")
+    
+    # 只有2级和3级概念可以添加个股
+    if concept.level < 2:
+        raise HTTPException(status_code=400, detail="只有2级和3级概念可以添加个股")
+    
+    try:
+        StockConceptMappingService.add_concept_to_stock(
+            db=db,
+            stock_name=stock_name.strip(),
+            concept_id=concept_id
+        )
+        # 更新stock_count
+        from app.models.stock_concept import StockConceptMapping
+        stock_count = db.query(StockConceptMapping).filter(
+            StockConceptMapping.concept_id == concept_id
+        ).count()
+        concept.stock_count = stock_count
+        db.commit()
+        db.refresh(concept)
+        return concept
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"添加个股失败: {str(e)}")
+
+
+@router.delete("/{concept_id}/stocks/{stock_name}", status_code=204)
+def remove_stock_from_concept(
+    concept_id: int,
+    stock_name: str,
+    db: Session = Depends(get_db)
+):
+    """从概念移除个股"""
+    concept = StockConceptService.get_by_id(db, concept_id)
+    if not concept:
+        raise HTTPException(status_code=404, detail="概念板块不存在")
+    
+    success = StockConceptMappingService.remove_concept_from_stock(
+        db=db,
+        stock_name=stock_name,
+        concept_id=concept_id
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="关联关系不存在")
+    
+    # 更新stock_count
+    from app.models.stock_concept import StockConceptMapping
+    stock_count = db.query(StockConceptMapping).filter(
+        StockConceptMapping.concept_id == concept_id
+    ).count()
+    concept.stock_count = stock_count
+    db.commit()
+    
     return None

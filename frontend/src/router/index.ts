@@ -13,16 +13,10 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '仪表盘' },
   },
   {
-    path: '/lhb',
-    name: 'Lhb',
-    component: () => import('@/views/Lhb/List.vue'),
-    meta: { title: '龙虎榜' },
-  },
-  {
     path: '/lhb-institution',
     name: 'LhbInstitution',
     component: () => import('@/views/LhbHot/index.vue'),
-    meta: { title: '机构榜' },
+    meta: { title: '龙虎榜' },
   },
   {
     path: '/zt-pool',
@@ -45,14 +39,14 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/stock-fund-flow',
     name: 'StockFundFlow',
-    component: () => import('@/views/FundFlow/index.vue'),
-    meta: { title: '资金流' },
+    component: () => import('@/views/StockFundFlow/index.vue'),
+    meta: { title: '个股资金流' },
   },
   {
-    path: '/trader',
-    name: 'Trader',
-    component: () => import('@/views/Trader/index.vue'),
-    meta: { title: '游资映射' },
+    path: '/concept-fund-flow',
+    name: 'ConceptFundFlow',
+    component: () => import('@/views/ConceptFundFlow/index.vue'),
+    meta: { title: '概念资金流' },
   },
   {
     path: '/trading-calendar',
@@ -66,6 +60,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/Task/index.vue'),
     meta: { title: '任务管理' },
   },
+  {
+    path: '/stock-concept',
+    name: 'StockConcept',
+    component: () => import('@/views/StockConcept/index.vue'),
+    meta: { title: '概念题材管理' },
+  },
 ]
 
 const router = createRouter({
@@ -75,6 +75,16 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   document.title = `${to.meta.title || '交易复盘系统'}`
+  
+  // 如果访问交易日历页面但没有menu参数，默认跳转到calendar菜单
+  if (to.path === '/trading-calendar' && !to.query.menu) {
+    next({
+      path: '/trading-calendar',
+      query: { ...to.query, menu: 'calendar' }
+    })
+    return
+  }
+  
   next()
 })
 

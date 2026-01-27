@@ -47,3 +47,24 @@ def get_index_history(
     items = IndexService.get_index_history(db, index_code, start, end)
     return items
 
+
+@router.get("/{index_code}/kline")
+def get_index_kline(
+    index_code: str,
+    start_date: str = Query(..., description="开始日期"),
+    end_date: str = Query(..., description="结束日期"),
+):
+    """获取指数K线数据（包含open, high, low, close）"""
+    start = parse_date(start_date)
+    end = parse_date(end_date)
+    if not start or not end:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="日期格式错误")
+    
+    if start > end:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="开始日期不能大于结束日期")
+    
+    items = IndexService.get_index_kline_data(index_code, start, end)
+    return items
+
