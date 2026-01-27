@@ -30,9 +30,11 @@ try:
     from mangum import Mangum
     from flask import Request, Response
     import asyncio
+    import json
     
     # 创建 ASGI 适配器
-    handler = Mangum(app, lifespan="off")
+    # Mangum 实例本身就是一个 ASGI 应用，可以直接调用
+    mangum_handler = Mangum(app, lifespan="off")
     
     def main(request: Request) -> Response:
         """
@@ -45,16 +47,21 @@ try:
             Flask Response 对象
         """
         # 将 Flask Request 转换为 ASGI scope
-        path = request.path
-        if request.query_string:
-            path = f"{path}?{request.query_string.decode() if isinstance(request.query_string, bytes) else request.query_string}"
+        query_string = request.query_string
+        if isinstance(query_string, str):
+            query_string = query_string.encode()
+        elif query_string is None:
+            query_string = b''
+        
+        # 获取请求体
+        request_body = request.data if request.data else b''
         
         scope = {
             'type': 'http',
             'method': request.method,
             'path': request.path,
             'raw_path': request.path.encode(),
-            'query_string': request.query_string if isinstance(request.query_string, bytes) else request.query_string.encode(),
+            'query_string': query_string,
             'headers': [
                 (k.lower().encode(), v.encode() if isinstance(v, str) else v)
                 for k, v in request.headers.items()
@@ -67,8 +74,7 @@ try:
             'asgi': {'version': '3.0', 'spec_version': '2.0'},
         }
         
-        # 创建 ASGI 消息
-        request_body = request.data if request.data else b''
+        # 创建 ASGI receive 函数
         body_received = False
         
         async def receive():
@@ -86,6 +92,7 @@ try:
                 'more_body': False,
             }
         
+        # 创建 ASGI send 函数
         response_status = 200
         response_headers = []
         response_body_parts = []
@@ -105,13 +112,35 @@ try:
                 response_body_parts.append(body)
         
         # 运行 ASGI 应用
+        # 确保使用正确的事件循环
         try:
             loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         
-        loop.run_until_complete(handler(scope, receive, send))
+        # 调用 Mangum handler：mangum_handler(scope, receive, send)
+        # Mangum 实例是可调用的，接受 (scope, receive, send) 三个参数
+        try:
+            loop.run_until_complete(mangum_handler(scope, receive, send))
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"[Mangum Error] 调用失败: {e}")
+            print(f"[Mangum Error] 错误详情:\n{error_details}")
+            # 返回错误响应
+            return Response(
+                json.dumps({
+                    'error': 'Internal server error',
+                    'message': str(e),
+                    'type': type(e).__name__
+                }),
+                mimetype='application/json',
+                status=500
+            )
         
         # 构建 Flask Response
         return Response(
