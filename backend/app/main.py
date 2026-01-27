@@ -57,8 +57,8 @@ app = FastAPI(
 import re
 precise_origins = [origin for origin in settings.CORS_ORIGINS if "*" not in origin]
 
-# CORS正则表达式模式
-CORS_ORIGIN_REGEX = r"https://.*\.cloudfunctions\.net|https://.*\.run\.app"
+# CORS正则表达式模式 - 匹配所有 Cloud Functions 和 Cloud Run 域名
+CORS_ORIGIN_REGEX = r"https://.*\.cloudfunctions\.net|https://.*\.run\.app|https://.*\.a\.run\.app"
 
 app.add_middleware(
     CORSMiddleware,
@@ -108,10 +108,14 @@ async def global_exception_handler(request: Request, exc: Exception):
     error_msg = str(exc)
     print(f"[Global Exception Handler] 错误: {error_msg}")
     traceback.print_exc()
+    
+    # 确保 CORS 头总是被添加
+    cors_headers = get_cors_headers(request)
+    
     return JSONResponse(
         status_code=500,
         content={"detail": f"服务器内部错误: {error_msg}"},
-        headers=get_cors_headers(request)
+        headers=cors_headers
     )
 
 @app.exception_handler(StarletteHTTPException)
@@ -159,23 +163,34 @@ def root():
 
 
 @app.get("/health")
-def health_check():
-    """健康检查 - 不依赖任何外部服务"""
+def health_check(request: Request):
+    """健康检查 - 不依赖任何外部服务，确保返回 CORS 头"""
     try:
         # 基本健康检查，不访问数据库或其他服务
-        return {
+        response_data = {
             "status": "ok",
             "service": "trading-api",
             "version": settings.VERSION
         }
+        # 确保返回 CORS 头
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            content=response_data,
+            headers=get_cors_headers(request)
+        )
     except Exception as e:
         # 即使健康检查本身出错，也返回错误信息
         import traceback
         error_details = traceback.format_exc()
         print(f"[Health Check Error] {error_details}")
-        return {
-            "status": "error",
-            "message": str(e),
-            "service": "trading-api"
-        }
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": str(e),
+                "service": "trading-api"
+            },
+            headers=get_cors_headers(request)
+        )
 
