@@ -145,6 +145,9 @@ jobs:
             --allow-unauthenticated \
             --memory=512MB \
             --timeout=540s \
+            --max-instances=10 \
+            --service-account=${{ secrets.GCP_SA_EMAIL || '' }} \
+            --min-instances=0 \
             --max-instances=10"
           
           # Add environment variables if present

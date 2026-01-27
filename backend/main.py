@@ -9,7 +9,21 @@ from pathlib import Path
 # 添加项目路径
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from app.main import app
+# 延迟导入，确保快速启动
+try:
+    from app.main import app
+except Exception as e:
+    # 如果导入失败，创建一个简单的错误响应应用
+    from fastapi import FastAPI
+    app = FastAPI()
+    
+    @app.get("/")
+    def error_root():
+        return {"error": f"应用启动失败: {str(e)}"}
+    
+    @app.get("/health")
+    def error_health():
+        return {"status": "error", "message": str(e)}
 
 # 使用 Mangum 作为 ASGI 适配器（推荐方式）
 try:

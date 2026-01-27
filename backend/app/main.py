@@ -8,20 +8,42 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.config import settings
+# 延迟导入配置，允许在 Cloud Functions 环境中延迟验证
+try:
+    from app.config import settings
+except Exception as e:
+    # 如果配置加载失败，创建一个最小配置
+    import os
+    class MinimalSettings:
+        PROJECT_NAME = "交易复盘系统"
+        VERSION = "1.0.0"
+        API_V1_PREFIX = "/api/v1"
+        CORS_ORIGINS = []
+        DATABASE_URL = os.getenv("DATABASE_URL", "")
+    settings = MinimalSettings()
+    print(f"[警告] 配置加载失败，使用最小配置: {e}")
+
 from app.api.v1 import api_router
 
-# 在云环境中自动运行数据库迁移
+# 在云环境中自动运行数据库迁移（异步执行，不阻塞应用启动）
 is_gcp = os.getenv("FUNCTION_TARGET") or os.getenv("K_SERVICE") or os.getenv("GOOGLE_CLOUD_PROJECT")
 
 if is_gcp:
-    try:
-        from app.utils.migrate import run_migrations
-        print(f"[App Startup] 检测到 Google Cloud Functions 环境，开始运行数据库迁移...")
-        run_migrations()
-    except Exception as e:
-        print(f"[App Startup] 数据库迁移失败（非致命错误）: {e}")
-        # 不抛出异常，允许应用继续启动
+    import threading
+    def run_migrations_async():
+        """异步运行数据库迁移，不阻塞应用启动"""
+        try:
+            from app.utils.migrate import run_migrations
+            print(f"[App Startup] 检测到 Google Cloud Functions 环境，开始异步运行数据库迁移...")
+            run_migrations()
+        except Exception as e:
+            print(f"[App Startup] 数据库迁移失败（非致命错误）: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # 在后台线程中运行迁移，不阻塞应用启动
+    migration_thread = threading.Thread(target=run_migrations_async, daemon=True)
+    migration_thread.start()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

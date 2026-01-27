@@ -17,15 +17,20 @@ class Settings(BaseSettings):
     
     # 数据库配置
     # 必须通过环境变量设置 DATABASE_URL
+    # 在 Cloud Functions 环境中，允许延迟验证
     DATABASE_URL: str = Field(default="", description="数据库连接URL")
     
-    @field_validator("DATABASE_URL")
+    @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def validate_database_url(cls, v: str) -> str:
         """验证 DATABASE_URL 是否设置"""
-        if not v:
+        # 在 Cloud Functions 环境中，允许延迟验证
+        is_gcp = os.getenv("FUNCTION_TARGET") or os.getenv("K_SERVICE") or os.getenv("GOOGLE_CLOUD_PROJECT")
+        if not v and not is_gcp:
+            # 非 GCP 环境必须设置 DATABASE_URL
             raise ValueError("DATABASE_URL environment variable is required")
-        return v
+        # GCP 环境中，如果未设置，返回空字符串，在真正使用时再验证
+        return v or ""
     
     # Supabase配置
     SUPABASE_URL: Optional[str] = os.getenv("SUPABASE_URL")
