@@ -1937,13 +1937,6 @@ const watchedChartOption = computed(() => {
   font-weight: 500;
 }
 
-/* 优化负数显示：确保负号清晰可见 */
-.net-inflow-negative::before {
-  content: '';
-  display: inline-block;
-  margin-right: 2px;
-}
-
 .watched-chart {
   width: 100%;
   height: 100%;
