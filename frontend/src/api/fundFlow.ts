@@ -23,6 +23,7 @@ export interface FundFlowListParams {
   stock_code?: string
   consecutive_days?: number  // 连续N日
   min_net_inflow?: number  // 净流入>M（单位：元）
+  is_limit_up?: boolean  // 是否涨停，true=仅涨停，false=仅非涨停，undefined=全部
   page?: number
   page_size?: number
   sort_by?: 'main_inflow' | 'main_outflow' | 'main_net_inflow' | 'turnover_rate' | 'change_percent'

@@ -117,6 +117,7 @@ class FundFlowService:
         concept_names: Optional[List[str]] = None,
         consecutive_days: Optional[int] = None,
         min_net_inflow: Optional[float] = None,
+        is_limit_up: Optional[bool] = None,
         page: int = 1,
         page_size: int = 20,
         sort_by: Optional[str] = None,
@@ -218,6 +219,10 @@ class FundFlowService:
                 # 如果没有匹配的概念板块，返回空结果
                 query = query.filter(StockFundFlow.id == -1)
 
+        # 是否涨停筛选
+        if is_limit_up is not None:
+            query = query.filter(StockFundFlow.is_limit_up == is_limit_up)
+
         # 排序
         if sort_by:
             col = getattr(StockFundFlow, sort_by, None)
@@ -281,6 +286,7 @@ class FundFlowService:
         concept_names: Optional[List[str]] = None,
         consecutive_days: Optional[int] = None,
         min_net_inflow: Optional[float] = None,
+        is_limit_up: Optional[bool] = None,
         page: int = 1,
         page_size: int = 20,
         sort_by: Optional[str] = None,
@@ -442,6 +448,10 @@ class FundFlowService:
                 is_lhb=data['is_lhb'],
             )
             aggregated_items.append(item)
+        
+        # 是否涨停筛选
+        if is_limit_up is not None:
+            aggregated_items = [item for item in aggregated_items if item.is_limit_up == is_limit_up]
         
         # 排序
         if sort_by:

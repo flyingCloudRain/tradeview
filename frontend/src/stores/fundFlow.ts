@@ -27,7 +27,7 @@ export const useFundFlowStore = defineStore('fundFlow', () => {
   const industryLoading = ref(false)
   const pagination = ref({
     current: 1,
-    pageSize: 20,
+    pageSize: 50,
     total: 0,
   })
   const filters = ref<FundFlowListParams>({

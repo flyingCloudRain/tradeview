@@ -100,6 +100,21 @@ jobs:
         run: |
           set -e  # Exit on error
           
+          # Verify main.py exists and has main function
+          echo "Verifying main.py..."
+          if [ ! -f "main.py" ]; then
+            echo "❌ Error: main.py not found!"
+            exit 1
+          fi
+          
+          # Check if main function exists (basic check)
+          if ! grep -q "def main" main.py; then
+            echo "❌ Error: main function not found in main.py!"
+            exit 1
+          fi
+          
+          echo "✅ main.py verified"
+          
           # Prepare environment variables
           ENV_VARS=""
           [ -n "$DATABASE_URL" ] && ENV_VARS="$ENV_VARS,DATABASE_URL=$DATABASE_URL"
@@ -138,17 +153,30 @@ jobs:
           fi
           
           echo "Executing deployment command..."
-          eval $DEPLOY_CMD || {
+          echo "Command: $DEPLOY_CMD"
+          
+          # Execute deployment with better error handling
+          if ! eval $DEPLOY_CMD; then
             echo "❌ Deployment failed!"
-            echo "Checking for common issues..."
+            echo ""
+            echo "=== Debugging Information ==="
             echo "1. Verifying gcloud authentication..."
             gcloud auth list || echo "⚠️ Authentication issue"
-            echo "2. Verifying project access..."
-            gcloud projects describe ${{ env.GCP_PROJECT_ID }} || echo "⚠️ Project access issue"
-            echo "3. Checking required APIs..."
-            gcloud services list --enabled --filter="name:cloudfunctions.googleapis.com OR name:cloudbuild.googleapis.com" || echo "⚠️ API not enabled"
+            echo ""
+            echo "2. Checking required APIs..."
+            gcloud services list --enabled --project=${{ env.GCP_PROJECT_ID }} --filter="name:cloudfunctions.googleapis.com OR name:cloudbuild.googleapis.com OR name:cloudresourcemanager.googleapis.com" || echo "⚠️ API check issue"
+            echo ""
+            echo "3. Checking Cloud Build logs..."
+            echo "   Visit: https://console.cloud.google.com/cloud-build/builds?project=${{ env.GCP_PROJECT_ID }}"
+            echo ""
+            echo "4. Checking function status..."
+            gcloud functions describe ${{ env.FUNCTION_NAME }} --gen2 --region=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT_ID }} 2>&1 || echo "⚠️ Function does not exist yet"
+            echo ""
+            echo "5. If APIs are not enabled, enable them manually:"
+            echo "   Visit: https://console.cloud.google.com/apis/library?project=${{ env.GCP_PROJECT_ID }}"
+            echo "   Enable: Cloud Functions API, Cloud Build API, Cloud Resource Manager API"
             exit 1
-          }
+          fi
           
           echo "✅ Deployment command executed successfully"
 
