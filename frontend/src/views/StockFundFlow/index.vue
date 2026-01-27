@@ -32,6 +32,13 @@
                 style="width: 200px"
                 @clear="handleSearch"
               />
+              <el-input
+                v-model="stockName"
+                placeholder="股票名称"
+                clearable
+                style="width: 200px"
+                @clear="handleSearch"
+              />
               <el-input-number
                 v-model="consecutiveDays"
                 :min="1"
@@ -508,14 +515,87 @@
 
             <el-empty v-if="watchlistStore.stocks.length === 0" description="暂无关注股票，请先添加关注" />
 
-            <div v-else class="chart-container">
-              <v-chart 
-                class="watched-chart" 
-                :option="watchedChartOption" 
-                autoresize
-                v-loading="watchedLoading"
-              />
-              <el-empty v-if="watchedChartData.length === 0 && !watchedLoading" description="暂无数据，请先查询" />
+            <div v-else>
+              <!-- 表格/折线图切换 -->
+              <el-tabs 
+                v-model="watchedSubTab" 
+                class="watched-sub-tabs" 
+                @tab-change="handleWatchedSubTabChange"
+              >
+                <el-tab-pane label="表格视图" name="table">
+                  <!-- 日期选择器：选择要显示的交易日 -->
+                  <div class="date-selector-bar" style="margin-bottom: 16px;">
+                    <span style="margin-right: 8px; font-weight: 500;">选择交易日：</span>
+                    <el-checkbox-group 
+                      v-model="watchedSelectedDates" 
+                      @change="handleWatchedDateSelectionChange"
+                      style="display: inline-flex; flex-wrap: wrap; gap: 8px;"
+                    >
+                      <el-checkbox 
+                        v-for="date in availableTradingDates" 
+                        :key="date"
+                        :label="date"
+                        :value="date"
+                      >
+                        {{ formatTableDateLabel(date) }}
+                      </el-checkbox>
+                    </el-checkbox-group>
+                    <el-button 
+                      type="primary" 
+                      size="small" 
+                      style="margin-left: 12px"
+                      @click="handleSelectAllDates"
+                    >
+                      全选
+                    </el-button>
+                    <el-button 
+                      size="small" 
+                      style="margin-left: 8px"
+                      @click="handleClearDateSelection"
+                    >
+                      清空
+                    </el-button>
+                  </div>
+
+                  <!-- 表格视图：个股为行，交易日为列 -->
+                  <el-table
+                    :data="watchedTableData"
+                    :loading="watchedLoading"
+                    stripe
+                    border
+                    style="width: 100%"
+                    max-height="600"
+                  >
+                    <el-table-column prop="stock_code" label="股票代码" width="120" fixed="left" />
+                    <el-table-column prop="stock_name" label="股票名称" width="120" fixed="left" />
+                    <el-table-column 
+                      v-for="date in watchedSelectedDatesSorted" 
+                      :key="date"
+                      :label="formatTableDateLabel(date)"
+                      width="140"
+                      align="right"
+                    >
+                      <template #default="{ row }">
+                        <span :class="getNetInflowClass(row[date])">
+                          {{ formatNetInflow(row[date]) }}
+                        </span>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                  <el-empty v-if="watchedTableData.length === 0 && !watchedLoading" description="请选择交易日并查询数据" />
+                </el-tab-pane>
+                <el-tab-pane label="折线图" name="chart">
+                  <div class="chart-container">
+                    <v-chart 
+                      class="watched-chart" 
+                      :option="watchedChartOption" 
+                      autoresize
+                      v-loading="watchedLoading"
+                    />
+                    <el-empty v-if="watchedChartData.length === 0 && !watchedLoading" description="暂无数据，请先查询" />
+                  </div>
+                </el-tab-pane>
+              </el-tabs>
             </div>
           </el-card>
         </div>
@@ -575,6 +655,7 @@ const dateRange = getLast10TradingDaysRange()
 const startDate = ref(dateRange.start)
 const endDate = ref(dateRange.end)
 const stockCode = ref('')
+const stockName = ref('')
 const consecutiveDays = ref<number | undefined>(undefined)
 const minNetInflowDisplay = ref<number | undefined>(undefined)
 const minNetInflow = ref<number | undefined>(undefined)
@@ -594,6 +675,9 @@ const watchedLoading = ref(false)
 const watchedChartData = ref<FundFlowItem[]>([]) // 折线图数据
 const watchlistStockCode = ref('')
 const watchedIsLimitUp = ref<boolean | undefined>(undefined)
+const watchedSubTab = ref('table') // table=表格视图, chart=折线图
+const watchedSelectedDates = ref<string[]>([]) // 选择的交易日列表
+const watchedTableData = ref<Record<string, any>[]>([]) // 表格数据
 
 // 历史数据相关状态（关注个股资金流）
 const historyDataMap = ref<Record<string, FundFlowItem[]>>({})
@@ -682,6 +766,7 @@ const fetchData = async () => {
         start_date: startDate.value,
         end_date: endDate.value,
         stock_code: stockCode.value || undefined,
+        stock_name: stockName.value || undefined,
         consecutive_days: consecutiveDays.value || undefined,
         min_net_inflow: minNetInflow.value || undefined,
         is_limit_up: isLimitUp.value,
@@ -709,6 +794,7 @@ const fetchData = async () => {
       start_date: startDate.value,
       end_date: endDate.value,
       stock_code: stockCode.value || undefined,
+      stock_name: stockName.value || undefined,
       consecutive_days: consecutiveDays.value || undefined,
       min_net_inflow: minNetInflow.value || undefined,
       is_limit_up: isLimitUp.value,
@@ -860,6 +946,12 @@ const fetchWatchedData = async () => {
     })
 
     watchedChartData.value = allDailyData
+    
+    // 如果当前是表格视图且没有选择日期，自动选择所有可用交易日
+    if (watchedSubTab.value === 'table' && watchedSelectedDates.value.length === 0 && availableTradingDates.value.length > 0) {
+      watchedSelectedDates.value = [...availableTradingDates.value]
+      handleUpdateWatchedTable()
+    }
   } catch (error) {
     console.error('获取关注个股资金流失败:', error)
     ElMessage.error('获取关注个股资金流失败')
@@ -882,6 +974,127 @@ const disabledWatchedEndDate = (date: Date) => {
 
 const handleWatchedSearch = () => {
   fetchWatchedData()
+  // 如果当前是表格视图，也更新表格
+  if (watchedSubTab.value === 'table') {
+    handleUpdateWatchedTable()
+  }
+}
+
+const handleWatchedSubTabChange = (tabName: string) => {
+  if (tabName === 'table') {
+    // 如果切换到表格视图且没有选择日期，自动选择所有可用交易日
+    if (watchedSelectedDates.value.length === 0 && availableTradingDates.value.length > 0) {
+      watchedSelectedDates.value = [...availableTradingDates.value]
+    }
+    handleUpdateWatchedTable()
+  }
+}
+
+// 获取可用的交易日列表（从查询结果中提取）
+const availableTradingDates = computed(() => {
+  if (watchedChartData.value.length === 0) return []
+  const dates = new Set<string>()
+  watchedChartData.value.forEach(item => {
+    if (item.date) {
+      dates.add(item.date)
+    }
+  })
+  return Array.from(dates).sort()
+})
+
+// 日期选择变化处理
+const handleWatchedDateSelectionChange = () => {
+  handleUpdateWatchedTable()
+}
+
+// 全选日期
+const handleSelectAllDates = () => {
+  watchedSelectedDates.value = [...availableTradingDates.value]
+  handleUpdateWatchedTable()
+}
+
+// 清空日期选择
+const handleClearDateSelection = () => {
+  watchedSelectedDates.value = []
+  watchedTableData.value = []
+}
+
+// 更新表格数据
+const handleUpdateWatchedTable = () => {
+  if (watchedSelectedDates.value.length === 0) {
+    ElMessage.warning('请先选择要显示的交易日')
+    return
+  }
+  
+  if (watchedChartData.value.length === 0) {
+    ElMessage.warning('请先查询数据')
+    return
+  }
+  
+  // 按股票代码分组数据
+  const dataByStock: Record<string, Record<string, FundFlowItem>> = {}
+  watchedChartData.value.forEach((item) => {
+    if (!item.stock_code || !item.date) return
+    
+    if (!dataByStock[item.stock_code]) {
+      dataByStock[item.stock_code] = {}
+    }
+    dataByStock[item.stock_code][item.date] = item
+  })
+  
+  // 构建表格数据：每行是一个股票，列是选择的交易日
+  const tableRows: Record<string, any>[] = []
+  Object.entries(dataByStock).forEach(([stockCode, dateMap]) => {
+    const firstItem = Object.values(dateMap)[0]
+    const row: Record<string, any> = {
+      stock_code: stockCode,
+      stock_name: firstItem?.stock_name || stockCode,
+    }
+    
+    // 为每个选择的日期添加净流入数据
+    watchedSelectedDates.value.forEach(date => {
+      const item = dateMap[date]
+      row[date] = item?.main_net_inflow || null
+    })
+    
+    tableRows.push(row)
+  })
+  
+  // 按股票代码排序
+  tableRows.sort((a, b) => a.stock_code.localeCompare(b.stock_code))
+  
+  watchedTableData.value = tableRows
+}
+
+// 排序后的选择日期列表
+const watchedSelectedDatesSorted = computed(() => {
+  return [...watchedSelectedDates.value].sort()
+})
+
+// 格式化表格日期标签
+const formatTableDateLabel = (dateStr: string) => {
+  if (!dateStr) return ''
+  const date = dayjs(dateStr)
+  return date.format('MM-DD')
+}
+
+// 格式化净流入显示
+const formatNetInflow = (value: number | null) => {
+  if (value === null || value === undefined) return '-'
+  if (value >= 100000000) {
+    return `${(value / 100000000).toFixed(2)}亿`
+  } else if (value >= 10000) {
+    return `${(value / 10000).toFixed(2)}万`
+  }
+  return value.toFixed(2)
+}
+
+// 获取净流入样式类
+const getNetInflowClass = (value: number | null) => {
+  if (value === null || value === undefined) return ''
+  if (value > 0) return 'net-inflow-positive'
+  if (value < 0) return 'net-inflow-negative'
+  return ''
 }
 
 const handleAddToWatchlist = (code: string) => {
@@ -1122,6 +1335,7 @@ const fetchStockChartData = async () => {
             start_date: startDate.value,
             end_date: endDate.value,
             stock_code: stockCode.value || undefined,
+            stock_name: stockName.value || undefined,
             consecutive_days: consecutiveDays.value || undefined,
             min_net_inflow: minNetInflow.value || undefined,
             is_limit_up: isLimitUp.value,
@@ -1689,6 +1903,31 @@ const watchedChartOption = computed(() => {
 .chart-container {
   padding: 20px;
   height: 600px;
+}
+
+.date-selector-bar {
+  display: flex;
+  align-items: flex-start;
+  padding: 12px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.date-selector-bar .el-checkbox-group {
+  flex: 1;
+  min-width: 300px;
+}
+
+.net-inflow-positive {
+  color: #f56c6c;
+  font-weight: 500;
+}
+
+.net-inflow-negative {
+  color: #67c23a;
+  font-weight: 500;
 }
 
 .watched-chart {
