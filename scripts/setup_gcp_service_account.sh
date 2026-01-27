@@ -70,12 +70,43 @@ ROLES=(
     "roles/iam.serviceAccountUser"
     "roles/cloudbuild.builds.builder"
     "roles/artifactregistry.writer"
+    "roles/serviceusage.serviceUsageConsumer"
 )
 
 for ROLE in "${ROLES[@]}"; do
     echo "授予角色: $ROLE"
     if gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
         --member="serviceAccount:${SA_EMAIL}" \
+        --role="$ROLE" \
+        --condition=None &>/dev/null; then
+        echo "  ✅ 成功"
+    else
+        echo "  ⚠️  可能已存在或失败，继续..."
+    fi
+done
+echo ""
+
+# 步骤 2.5: 授予 Cloud Build 服务账号权限
+echo "=========================================="
+echo "步骤 2.5: 授予 Cloud Build 服务账号权限"
+echo "=========================================="
+
+PROJECT_NUMBER=$(gcloud projects describe "$GCP_PROJECT" --format="value(projectNumber)")
+CLOUD_BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+
+echo "Cloud Build 服务账号: $CLOUD_BUILD_SA"
+
+CLOUD_BUILD_ROLES=(
+    "roles/serviceusage.serviceUsageConsumer"
+    "roles/run.admin"
+    "roles/iam.serviceAccountUser"
+    "roles/storage.admin"
+)
+
+for ROLE in "${CLOUD_BUILD_ROLES[@]}"; do
+    echo "授予 Cloud Build 服务账号角色: $ROLE"
+    if gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
+        --member="serviceAccount:${CLOUD_BUILD_SA}" \
         --role="$ROLE" \
         --condition=None &>/dev/null; then
         echo "  ✅ 成功"

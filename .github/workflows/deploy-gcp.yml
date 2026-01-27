@@ -234,6 +234,33 @@ jobs:
           gcloud config set project ${{ env.GCP_PROJECT_ID }}
           gcloud config set compute/region ${{ env.GCP_REGION }}
 
+      - name: Grant required permissions to Cloud Build service account
+        run: |
+          echo "授予 Cloud Build 服务账号必要的权限..."
+          # 获取 Cloud Build 服务账号
+          PROJECT_NUMBER=$(gcloud projects describe ${{ env.GCP_PROJECT_ID }} --format="value(projectNumber)")
+          CLOUD_BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+          
+          echo "Cloud Build 服务账号: $CLOUD_BUILD_SA"
+          
+          # 授予必要的角色
+          gcloud projects add-iam-policy-binding ${{ env.GCP_PROJECT_ID }} \
+            --member="serviceAccount:${CLOUD_BUILD_SA}" \
+            --role="roles/serviceusage.serviceUsageConsumer" \
+            --condition=None || echo "⚠️ 权限可能已存在"
+          
+          gcloud projects add-iam-policy-binding ${{ env.GCP_PROJECT_ID }} \
+            --member="serviceAccount:${CLOUD_BUILD_SA}" \
+            --role="roles/run.admin" \
+            --condition=None || echo "⚠️ 权限可能已存在"
+          
+          gcloud projects add-iam-policy-binding ${{ env.GCP_PROJECT_ID }} \
+            --member="serviceAccount:${CLOUD_BUILD_SA}" \
+            --role="roles/iam.serviceAccountUser" \
+            --condition=None || echo "⚠️ 权限可能已存在"
+          
+          echo "✅ 权限授予完成"
+
       - name: Get Backend API URL
         id: backend-url
         run: |

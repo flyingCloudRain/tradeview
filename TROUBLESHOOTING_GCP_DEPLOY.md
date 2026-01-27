@@ -70,16 +70,84 @@ gcloud services enable \
 **错误信息**：
 - `Permission denied`
 - `The caller does not have permission`
+- `PERMISSION_DENIED: Build failed because the default service account is missing required IAM permissions`
+- `Caller does not have required permission to use project`
 
 **解决方案**：
 
-确保服务账号 `github-actions-deployer@tradeview-484009.iam.gserviceaccount.com` 具有以下角色：
+#### 3.1 GitHub Actions 服务账号权限
 
-- `Cloud Functions Admin`
-- `Cloud Run Admin`
-- `Storage Admin`
-- `Service Account User`
-- `Cloud Build Service Account`
+确保服务账号 `github-actions-deployer@YOUR_PROJECT.iam.gserviceaccount.com` 具有以下角色：
+
+```bash
+# 替换 YOUR_PROJECT 为实际项目 ID
+PROJECT_ID="YOUR_PROJECT"
+SA_EMAIL="github-actions-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
+
+# 授予必要的角色
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/cloudfunctions.admin"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/run.admin"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/storage.admin"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/iam.serviceAccountUser"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/cloudbuild.builds.builder"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/serviceusage.serviceUsageConsumer"
+```
+
+#### 3.2 Cloud Build 服务账号权限（重要！）
+
+Cloud Build 默认服务账号也需要权限。获取项目编号并授予权限：
+
+```bash
+PROJECT_ID="YOUR_PROJECT"
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+CLOUD_BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+
+echo "Cloud Build 服务账号: $CLOUD_BUILD_SA"
+
+# 授予必要的角色
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role="roles/serviceusage.serviceUsageConsumer"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role="roles/run.admin"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role="roles/iam.serviceAccountUser"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role="roles/storage.admin"
+```
+
+**或者通过 GCP 控制台**：
+
+1. 访问 [IAM & Admin](https://console.cloud.google.com/iam-admin/iam)
+2. 找到 Cloud Build 服务账号：`PROJECT_NUMBER@cloudbuild.gserviceaccount.com`
+3. 点击编辑，添加以下角色：
+   - `Service Usage Consumer` (roles/serviceusage.serviceUsageConsumer)
+   - `Cloud Run Admin` (roles/run.admin)
+   - `Service Account User` (roles/iam.serviceAccountUser)
+   - `Storage Admin` (roles/storage.admin)
 
 检查权限：
 ```bash
