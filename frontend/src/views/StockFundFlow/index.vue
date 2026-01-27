@@ -1080,12 +1080,20 @@ const formatTableDateLabel = (dateStr: string) => {
 // 格式化净流入显示
 const formatNetInflow = (value: number | null) => {
   if (value === null || value === undefined) return '-'
-  if (value >= 100000000) {
-    return `${(value / 100000000).toFixed(2)}亿`
-  } else if (value >= 10000) {
-    return `${(value / 10000).toFixed(2)}万`
+  
+  const absValue = Math.abs(value)
+  let formatted: string
+  
+  if (absValue >= 100000000) {
+    formatted = `${(absValue / 100000000).toFixed(2)}亿`
+  } else if (absValue >= 10000) {
+    formatted = `${(absValue / 10000).toFixed(2)}万`
+  } else {
+    formatted = absValue.toFixed(2)
   }
-  return value.toFixed(2)
+  
+  // 负数显示负号
+  return value < 0 ? `-${formatted}` : formatted
 }
 
 // 获取净流入样式类
@@ -1927,6 +1935,13 @@ const watchedChartOption = computed(() => {
 .net-inflow-negative {
   color: #67c23a;
   font-weight: 500;
+}
+
+/* 优化负数显示：确保负号清晰可见 */
+.net-inflow-negative::before {
+  content: '';
+  display: inline-block;
+  margin-right: 2px;
 }
 
 .watched-chart {
