@@ -115,6 +115,42 @@ jobs:
           
           echo "✅ main.py verified"
           
+          # Check if function is currently deploying and wait if needed
+          echo "Checking function deployment status..."
+          FUNCTION_STATE=$(gcloud functions describe ${{ env.FUNCTION_NAME }} \
+            --gen2 \
+            --region=${{ env.GCP_REGION }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --format="value(state)" 2>/dev/null || echo "NOT_FOUND")
+          
+          if [ "$FUNCTION_STATE" = "DEPLOYING" ]; then
+            echo "⚠️  Function is currently deploying. Waiting for it to complete..."
+            MAX_WAIT=600  # 10 minutes max wait
+            WAIT_TIME=0
+            while [ $WAIT_TIME -lt $MAX_WAIT ]; do
+              FUNCTION_STATE=$(gcloud functions describe ${{ env.FUNCTION_NAME }} \
+                --gen2 \
+                --region=${{ env.GCP_REGION }} \
+                --project=${{ env.GCP_PROJECT_ID }} \
+                --format="value(state)" 2>/dev/null || echo "NOT_FOUND")
+              
+              if [ "$FUNCTION_STATE" != "DEPLOYING" ]; then
+                echo "✅ Previous deployment completed. State: $FUNCTION_STATE"
+                break
+              fi
+              
+              echo "Still deploying... (waited ${WAIT_TIME}s)"
+              sleep 10
+              WAIT_TIME=$((WAIT_TIME + 10))
+            done
+            
+            if [ "$FUNCTION_STATE" = "DEPLOYING" ]; then
+              echo "⚠️  Previous deployment still in progress after ${MAX_WAIT}s. Proceeding anyway..."
+            fi
+          else
+            echo "Function state: $FUNCTION_STATE"
+          fi
+          
           # Prepare environment variables
           ENV_VARS=""
           [ -n "$DATABASE_URL" ] && ENV_VARS="$ENV_VARS,DATABASE_URL=$DATABASE_URL"
@@ -158,8 +194,53 @@ jobs:
           echo "Executing deployment command..."
           echo "Command: $DEPLOY_CMD"
           
-          # Execute deployment with better error handling
-          if ! eval $DEPLOY_CMD; then
+          # Execute deployment with retry logic for 409 conflicts
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          DEPLOY_SUCCESS=false
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            # Capture both stdout and stderr
+            if ERROR_OUTPUT=$(eval $DEPLOY_CMD 2>&1); then
+              DEPLOY_SUCCESS=true
+              echo "$ERROR_OUTPUT"
+              break
+            else
+              EXIT_CODE=$?
+              echo "$ERROR_OUTPUT"
+              
+              # Check if it's a 409 conflict error
+              if echo "$ERROR_OUTPUT" | grep -q "409\|unable to queue the operation"; then
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+                if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                  WAIT_TIME=$((RETRY_COUNT * 30))  # Exponential backoff: 30s, 60s
+                  echo ""
+                  echo "⚠️  Deployment conflict (409). Waiting ${WAIT_TIME}s before retry ${RETRY_COUNT}/${MAX_RETRIES}..."
+                  sleep $WAIT_TIME
+                  
+                  # Check function state again
+                  FUNCTION_STATE=$(gcloud functions describe ${{ env.FUNCTION_NAME }} \
+                    --gen2 \
+                    --region=${{ env.GCP_REGION }} \
+                    --project=${{ env.GCP_PROJECT_ID }} \
+                    --format="value(state)" 2>/dev/null || echo "NOT_FOUND")
+                  echo "Current function state: $FUNCTION_STATE"
+                  echo "Retrying deployment..."
+                  continue
+                else
+                  echo ""
+                  echo "❌ Max retries reached. Previous deployment may still be in progress."
+                  echo "Please wait a few minutes and try again, or check the function status:"
+                  echo "  gcloud functions describe ${{ env.FUNCTION_NAME }} --gen2 --region=${{ env.GCP_REGION }}"
+                fi
+              fi
+              
+              # If not a 409 error, break and show error
+              break
+            fi
+          done
+          
+          if [ "$DEPLOY_SUCCESS" = false ]; then
             echo "❌ Deployment failed!"
             echo ""
             echo "=== Debugging Information ==="
