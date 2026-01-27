@@ -149,10 +149,11 @@ gcloud auth activate-service-account github-actions-deployer@tradeview-484009.ia
 授予权限后，验证是否成功：
 
 ```bash
-PROJECT_ID="your-project-id"
+PROJECT_ID="tradeview-484009"
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
 CLOUD_BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
 
+echo "验证 Cloud Build 服务账号权限: $CLOUD_BUILD_SA"
 gcloud projects get-iam-policy $PROJECT_ID \
   --flatten="bindings[].members" \
   --filter="bindings.members:${CLOUD_BUILD_SA}" \
