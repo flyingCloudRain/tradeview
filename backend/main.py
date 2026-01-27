@@ -122,10 +122,41 @@ try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         
-        # 调用 Mangum handler：mangum_handler(scope, receive, send)
-        # Mangum 实例是可调用的，接受 (scope, receive, send) 三个参数
+        # 调用 Mangum handler
+        # Mangum 实例是可调用的 ASGI 应用，接受 (scope, receive, send) 三个参数
+        # 注意：Mangum 的 __call__ 方法签名是 __call__(self, scope, receive, send)
+        # 所以调用时只需要传递 scope, receive, send 三个参数
         try:
-            loop.run_until_complete(mangum_handler(scope, receive, send))
+            # 直接调用 Mangum 实例，它会自动处理 ASGI 协议
+            # 确保传递的是正确的参数：scope (dict), receive (async callable), send (async callable)
+            if asyncio.iscoroutinefunction(mangum_handler):
+                # 如果是协程函数，直接 await
+                result = loop.run_until_complete(mangum_handler(scope, receive, send))
+            else:
+                # 如果是可调用对象，直接调用
+                result = loop.run_until_complete(mangum_handler(scope, receive, send))
+        except TypeError as e:
+            # 如果参数数量错误，尝试使用 __call__ 方法
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"[Mangum Error] 参数错误: {e}")
+            print(f"[Mangum Error] Mangum 类型: {type(mangum_handler)}")
+            print(f"[Mangum Error] Mangum 可调用: {callable(mangum_handler)}")
+            print(f"[Mangum Error] 错误详情:\n{error_details}")
+            # 尝试使用 __call__ 方法
+            try:
+                result = loop.run_until_complete(mangum_handler.__call__(scope, receive, send))
+            except Exception as e2:
+                print(f"[Mangum Error] __call__ 也失败: {e2}")
+                return Response(
+                    json.dumps({
+                        'error': 'Internal server error',
+                        'message': f'Mangum调用失败: {str(e)}',
+                        'type': type(e).__name__
+                    }),
+                    mimetype='application/json',
+                    status=500
+                )
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
