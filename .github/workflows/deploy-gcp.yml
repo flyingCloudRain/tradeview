@@ -236,30 +236,32 @@ jobs:
 
       - name: Grant required permissions to Cloud Build service account
         run: |
-          echo "授予 Cloud Build 服务账号必要的权限..."
+          echo "使用 github-actions-deployer 服务账号授予 Cloud Build 服务账号必要的权限..."
           # 获取 Cloud Build 服务账号
           PROJECT_NUMBER=$(gcloud projects describe ${{ env.GCP_PROJECT_ID }} --format="value(projectNumber)")
           CLOUD_BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+          GITHUB_SA="github-actions-deployer@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com"
           
+          echo "GitHub Actions 服务账号: $GITHUB_SA"
           echo "Cloud Build 服务账号: $CLOUD_BUILD_SA"
           
-          # 授予必要的角色
+          # 授予必要的角色（使用已认证的 github-actions-deployer 服务账号）
           gcloud projects add-iam-policy-binding ${{ env.GCP_PROJECT_ID }} \
             --member="serviceAccount:${CLOUD_BUILD_SA}" \
             --role="roles/serviceusage.serviceUsageConsumer" \
-            --condition=None || echo "⚠️ 权限可能已存在"
+            --condition=None || echo "⚠️ 权限可能已存在或需要额外权限"
           
           gcloud projects add-iam-policy-binding ${{ env.GCP_PROJECT_ID }} \
             --member="serviceAccount:${CLOUD_BUILD_SA}" \
             --role="roles/run.admin" \
-            --condition=None || echo "⚠️ 权限可能已存在"
+            --condition=None || echo "⚠️ 权限可能已存在或需要额外权限"
           
           gcloud projects add-iam-policy-binding ${{ env.GCP_PROJECT_ID }} \
             --member="serviceAccount:${CLOUD_BUILD_SA}" \
             --role="roles/iam.serviceAccountUser" \
-            --condition=None || echo "⚠️ 权限可能已存在"
+            --condition=None || echo "⚠️ 权限可能已存在或需要额外权限"
           
-          echo "✅ 权限授予完成"
+          echo "✅ 权限授予完成（如果失败，请手动授予权限）"
 
       - name: Get Backend API URL
         id: backend-url

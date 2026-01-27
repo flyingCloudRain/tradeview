@@ -10,12 +10,58 @@ Caller does not have required permission to use project ***.
 
 ## 快速修复（推荐）
 
-### 方法一：使用 gcloud 命令（需要项目所有者权限）
+### 方法一：使用 github-actions-deployer 服务账号（推荐）
+
+如果你已经有 `github-actions-deployer@tradeview-484009.iam.gserviceaccount.com` 服务账号，可以使用它来授予权限：
 
 ```bash
 # 设置项目 ID
-export PROJECT_ID="your-project-id"  # 替换为实际项目 ID
+export PROJECT_ID="tradeview-484009"
 gcloud config set project $PROJECT_ID
+
+# 使用 github-actions-deployer 服务账号进行身份验证
+# 首先需要下载服务账号密钥并激活
+gcloud auth activate-service-account github-actions-deployer@${PROJECT_ID}.iam.gserviceaccount.com \
+  --key-file=path/to/gcp-sa-key.json
+
+# 获取项目编号
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+CLOUD_BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+
+echo "使用服务账号: github-actions-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
+echo "Cloud Build 服务账号: $CLOUD_BUILD_SA"
+
+# 授予必要的角色
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role="roles/serviceusage.serviceUsageConsumer"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role="roles/run.admin"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role="roles/iam.serviceAccountUser"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role="roles/storage.admin"
+
+echo "✅ 权限授予完成"
+```
+
+**注意**：如果 `github-actions-deployer` 服务账号没有 `roles/resourcemanager.projectIamAdmin` 权限，可能无法授予其他服务账号权限。在这种情况下，需要使用项目所有者账号执行。
+
+### 方法一（备选）：使用项目所有者账号
+
+```bash
+# 设置项目 ID
+export PROJECT_ID="tradeview-484009"
+gcloud config set project $PROJECT_ID
+
+# 使用项目所有者账号登录
+gcloud auth login
 
 # 获取项目编号
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
@@ -43,7 +89,23 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 echo "✅ 权限授予完成"
 ```
 
-### 方法二：通过 GCP 控制台
+### 方法二：授予 github-actions-deployer 服务账号 IAM 管理权限
+
+如果想让 `github-actions-deployer` 服务账号能够授予其他服务账号权限，需要先给它授予 IAM 管理权限：
+
+```bash
+export PROJECT_ID="tradeview-484009"
+GITHUB_SA="github-actions-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
+
+# 授予 IAM 管理权限（需要项目所有者执行）
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${GITHUB_SA}" \
+  --role="roles/resourcemanager.projectIamAdmin"
+```
+
+授予后，GitHub Actions 工作流中的权限授予步骤应该能够成功执行。
+
+### 方法三：通过 GCP 控制台
 
 1. 访问 [IAM & Admin](https://console.cloud.google.com/iam-admin/iam)
 2. 选择你的项目
@@ -58,7 +120,23 @@ echo "✅ 权限授予完成"
    - ✅ **Storage Admin** (`roles/storage.admin`)
 6. 保存更改
 
-### 方法三：使用更新后的设置脚本
+### 方法四：使用专用脚本（最简单）
+
+使用提供的脚本自动授予权限：
+
+```bash
+# 方式 1: 使用项目所有者账号（推荐）
+gcloud auth login
+./scripts/grant_cloud_build_permissions.sh
+
+# 方式 2: 使用 github-actions-deployer 服务账号
+# （需要先授予该服务账号 roles/resourcemanager.projectIamAdmin 权限）
+gcloud auth activate-service-account github-actions-deployer@tradeview-484009.iam.gserviceaccount.com \
+  --key-file=path/to/gcp-sa-key.json
+./scripts/grant_cloud_build_permissions.sh
+```
+
+### 方法五：使用更新后的设置脚本
 
 运行更新后的设置脚本，它会自动授予所有必要的权限：
 
