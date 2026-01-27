@@ -22,6 +22,7 @@ def get_fund_flow_list(
     start_date: Optional[str] = Query(None, description="开始日期（日期范围查询，可选，默认最近3日）"),
     end_date: Optional[str] = Query(None, description="结束日期（日期范围查询，可选，默认最近3日）"),
     stock_code: Optional[str] = Query(None, description="股票代码"),
+    stock_name: Optional[str] = Query(None, description="股票名称（模糊匹配）"),
     concept_ids: Optional[str] = Query(None, description="概念板块ID列表（逗号分隔，如：1,2,3）"),
     concept_names: Optional[str] = Query(None, description="概念板块名称列表（逗号分隔，如：人工智能,新能源）"),
     consecutive_days: Optional[int] = Query(None, ge=1, description="连续N日，净流入>M的查询条件（N）"),
@@ -87,39 +88,48 @@ def get_fund_flow_list(
         concept_names_list = [x.strip() for x in concept_names.split(',') if x.strip()]
     
     # 根据查询模式调用不同的服务方法
-    if target_date is not None:
-        # 单日期查询
-        items, total = FundFlowService.get_fund_flow_list(
-            db=db,
-            target_date=target_date,
-            stock_code=stock_code,
-            concept_ids=concept_ids_list,
-            concept_names=concept_names_list,
-            consecutive_days=consecutive_days,
-            min_net_inflow=min_net_inflow,
-            is_limit_up=is_limit_up,
-            page=page,
-            page_size=page_size,
-            sort_by=sort_by,
-            order=order,
-        )
-    else:
-        # 日期范围查询
-        items, total = FundFlowService.get_fund_flow_list_by_date_range(
-            db=db,
-            start_date=start,
-            end_date=end,
-            stock_code=stock_code,
-            concept_ids=concept_ids_list,
-            concept_names=concept_names_list,
-            consecutive_days=consecutive_days,
-            min_net_inflow=min_net_inflow,
-            is_limit_up=is_limit_up,
-            page=page,
-            page_size=page_size,
-            sort_by=sort_by,
-            order=order,
-        )
+    try:
+        if target_date is not None:
+            # 单日期查询
+            items, total = FundFlowService.get_fund_flow_list(
+                db=db,
+                target_date=target_date,
+                stock_code=stock_code,
+                stock_name=stock_name,
+                concept_ids=concept_ids_list,
+                concept_names=concept_names_list,
+                consecutive_days=consecutive_days,
+                min_net_inflow=min_net_inflow,
+                is_limit_up=is_limit_up,
+                page=page,
+                page_size=page_size,
+                sort_by=sort_by,
+                order=order,
+            )
+        else:
+            # 日期范围查询
+            items, total = FundFlowService.get_fund_flow_list_by_date_range(
+                db=db,
+                start_date=start,
+                end_date=end,
+                stock_code=stock_code,
+                stock_name=stock_name,
+                concept_ids=concept_ids_list,
+                concept_names=concept_names_list,
+                consecutive_days=consecutive_days,
+                min_net_inflow=min_net_inflow,
+                is_limit_up=is_limit_up,
+                page=page,
+                page_size=page_size,
+                sort_by=sort_by,
+                order=order,
+            )
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[API Error] 查询资金流失败: {e}")
+        print(f"[API Error] 错误详情:\n{error_details}")
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
     
     # 将items转换为字典，添加concepts字段
     items_dict = []
