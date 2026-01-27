@@ -31,6 +31,7 @@ redis>=5.0.1
 
 # 工具库
 python-dateutil>=2.8.2
+pytz>=2023.3
 
 # Google Cloud Functions 适配器
 mangum>=0.17.0
