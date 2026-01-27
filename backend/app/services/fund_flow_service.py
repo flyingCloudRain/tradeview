@@ -113,6 +113,7 @@ class FundFlowService:
         db: Session,
         target_date: date,
         stock_code: Optional[str] = None,
+        stock_name: Optional[str] = None,
         concept_ids: Optional[List[int]] = None,
         concept_names: Optional[List[str]] = None,
         consecutive_days: Optional[int] = None,
@@ -127,6 +128,7 @@ class FundFlowService:
         获取资金流列表
         
         Args:
+            stock_name: 股票名称（模糊匹配）
             consecutive_days: 连续N日，净流入>M的查询条件（N）
             min_net_inflow: 连续N日，净流入>M的查询条件（M，单位：元）
         """
@@ -134,6 +136,9 @@ class FundFlowService:
         
         if stock_code:
             query = query.filter(StockFundFlow.stock_code == stock_code)
+        
+        if stock_name:
+            query = query.filter(StockFundFlow.stock_name.ilike(f"%{stock_name}%"))
         
         # 连续N日净流入>M的筛选
         if consecutive_days is not None and min_net_inflow is not None:
@@ -282,6 +287,7 @@ class FundFlowService:
         start_date: date,
         end_date: date,
         stock_code: Optional[str] = None,
+        stock_name: Optional[str] = None,
         concept_ids: Optional[List[int]] = None,
         concept_names: Optional[List[str]] = None,
         consecutive_days: Optional[int] = None,
@@ -303,6 +309,7 @@ class FundFlowService:
         Args:
             start_date: 开始日期
             end_date: 结束日期
+            stock_name: 股票名称（模糊匹配）
             consecutive_days: 连续N日，净流入>M的查询条件（N）
             min_net_inflow: 连续N日，净流入>M的查询条件（M，单位：元）
         """
@@ -316,6 +323,9 @@ class FundFlowService:
         
         if stock_code:
             query = query.filter(StockFundFlow.stock_code == stock_code)
+        
+        if stock_name:
+            query = query.filter(StockFundFlow.stock_name.ilike(f"%{stock_name}%"))
         
         # 连续N日净流入>M的筛选
         if consecutive_days is not None and min_net_inflow is not None:
@@ -433,21 +443,28 @@ class FundFlowService:
         for code, data in aggregated_data.items():
             # 创建一个类似StockFundFlow的对象
             # 由于我们需要返回StockFundFlow对象，我们创建一个临时对象
-            item = StockFundFlow(
-                date=data['date'],
-                stock_code=data['stock_code'],
-                stock_name=data['stock_name'],
-                current_price=data['current_price'],
-                change_percent=data['change_percent'],
-                turnover_rate=data['turnover_rate'],
-                main_inflow=data['main_inflow'],
-                main_outflow=data['main_outflow'],
-                main_net_inflow=data['main_net_inflow'],
-                turnover_amount=data['turnover_amount'],
-                is_limit_up=data['is_limit_up'],
-                is_lhb=data['is_lhb'],
-            )
-            aggregated_items.append(item)
+            try:
+                item = StockFundFlow(
+                    date=data['date'],
+                    stock_code=data['stock_code'],
+                    stock_name=data['stock_name'],
+                    current_price=data.get('current_price'),
+                    change_percent=data.get('change_percent'),
+                    turnover_rate=data.get('turnover_rate'),
+                    main_inflow=data.get('main_inflow', 0),
+                    main_outflow=data.get('main_outflow', 0),
+                    main_net_inflow=data.get('main_net_inflow', 0),
+                    turnover_amount=data.get('turnover_amount', 0),
+                    is_limit_up=data.get('is_limit_up', False),
+                    is_lhb=data.get('is_lhb', False),
+                )
+                aggregated_items.append(item)
+            except Exception as e:
+                # 记录错误但继续处理其他数据
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"创建聚合对象失败 (stock_code={code}): {e}")
+                continue
         
         # 是否涨停筛选
         if is_limit_up is not None:
