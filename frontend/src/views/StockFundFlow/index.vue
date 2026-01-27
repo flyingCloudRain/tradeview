@@ -525,7 +525,6 @@
                 <el-tab-pane label="表格视图" name="table">
                   <!-- 日期选择器：选择要显示的交易日 -->
                   <div class="date-selector-bar" style="margin-bottom: 16px;">
-                    <span style="margin-right: 8px; font-weight: 500;">选择交易日：</span>
                     <el-checkbox-group 
                       v-model="watchedSelectedDates" 
                       @change="handleWatchedDateSelectionChange"
