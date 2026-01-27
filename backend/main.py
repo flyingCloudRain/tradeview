@@ -123,31 +123,35 @@ try:
             asyncio.set_event_loop(loop)
         
         # 调用 Mangum handler
-        # Mangum 实例是可调用的 ASGI 应用，接受 (scope, receive, send) 三个参数
-        # 注意：Mangum 的 __call__ 方法签名是 __call__(self, scope, receive, send)
-        # 所以调用时只需要传递 scope, receive, send 三个参数
+        # Mangum 实例是可调用的 ASGI 应用
+        # 注意：loop.run_until_complete 接受一个协程对象，而不是调用结果
+        # 所以应该先调用 mangum_handler(scope, receive, send) 得到协程，然后传递给 run_until_complete
         try:
-            # 直接调用 Mangum 实例，它会自动处理 ASGI 协议
-            # 确保传递的是正确的参数：scope (dict), receive (async callable), send (async callable)
-            if asyncio.iscoroutinefunction(mangum_handler):
-                # 如果是协程函数，直接 await
-                result = loop.run_until_complete(mangum_handler(scope, receive, send))
-            else:
-                # 如果是可调用对象，直接调用
-                result = loop.run_until_complete(mangum_handler(scope, receive, send))
+            # 创建协程对象
+            coro = mangum_handler(scope, receive, send)
+            # 运行协程
+            loop.run_until_complete(coro)
         except TypeError as e:
-            # 如果参数数量错误，尝试使用 __call__ 方法
+            # 如果参数数量错误，可能是 Mangum 版本问题
             import traceback
             error_details = traceback.format_exc()
             print(f"[Mangum Error] 参数错误: {e}")
             print(f"[Mangum Error] Mangum 类型: {type(mangum_handler)}")
             print(f"[Mangum Error] Mangum 可调用: {callable(mangum_handler)}")
+            print(f"[Mangum Error] 尝试直接调用...")
             print(f"[Mangum Error] 错误详情:\n{error_details}")
-            # 尝试使用 __call__ 方法
+            # 尝试直接调用（不使用 run_until_complete）
             try:
-                result = loop.run_until_complete(mangum_handler.__call__(scope, receive, send))
+                # 如果 mangum_handler 返回协程，需要 await
+                import inspect
+                if inspect.iscoroutinefunction(mangum_handler):
+                    coro = mangum_handler(scope, receive, send)
+                    loop.run_until_complete(coro)
+                else:
+                    # 直接调用
+                    mangum_handler(scope, receive, send)
             except Exception as e2:
-                print(f"[Mangum Error] __call__ 也失败: {e2}")
+                print(f"[Mangum Error] 直接调用也失败: {e2}")
                 return Response(
                     json.dumps({
                         'error': 'Internal server error',
