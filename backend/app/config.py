@@ -75,7 +75,10 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     
     class Config:
-        env_file = ".env"
+        # 在 GCP 环境中，不使用 .env 文件，只使用环境变量
+        # 这样可以避免本地配置覆盖 GCP 环境变量
+        is_gcp = os.getenv("FUNCTION_TARGET") or os.getenv("K_SERVICE") or os.getenv("GOOGLE_CLOUD_PROJECT")
+        env_file = None if is_gcp else ".env"  # GCP 环境中禁用 .env 文件
         case_sensitive = True
 
 
