@@ -135,8 +135,17 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         headers=get_cors_headers(request)
     )
 
-# 注册路由
-app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+# 注册路由（使用 try-except 确保即使路由注册失败，应用也能启动）
+try:
+    app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+except Exception as e:
+    print(f"[警告] API 路由注册失败: {e}")
+    import traceback
+    traceback.print_exc()
+    # 创建一个简单的错误路由，避免应用完全无法启动
+    @app.get(settings.API_V1_PREFIX + "/{path:path}")
+    def api_error_handler(path: str):
+        return {"error": "API路由注册失败", "message": str(e)}
 
 
 @app.get("/")
@@ -151,6 +160,22 @@ def root():
 
 @app.get("/health")
 def health_check():
-    """健康检查"""
-    return {"status": "ok"}
+    """健康检查 - 不依赖任何外部服务"""
+    try:
+        # 基本健康检查，不访问数据库或其他服务
+        return {
+            "status": "ok",
+            "service": "trading-api",
+            "version": settings.VERSION
+        }
+    except Exception as e:
+        # 即使健康检查本身出错，也返回错误信息
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[Health Check Error] {error_details}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "service": "trading-api"
+        }
 
