@@ -34,7 +34,13 @@ try:
     
     # 创建 ASGI 适配器
     # Mangum 实例本身就是一个 ASGI 应用，可以直接调用
+    # 注意：Mangum 是为 AWS Lambda 设计的，在 Cloud Functions 中需要特殊处理
     mangum_handler = Mangum(app, lifespan="off")
+    
+    # 创建一个包装函数来正确处理 ASGI 调用
+    async def asgi_app(scope, receive, send):
+        """ASGI 应用包装器"""
+        return await mangum_handler(scope, receive, send)
     
     def main(request: Request) -> Response:
         """
@@ -122,50 +128,17 @@ try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         
-        # 调用 Mangum handler
-        # Mangum 实例是可调用的 ASGI 应用
-        # 注意：loop.run_until_complete 接受一个协程对象，而不是调用结果
-        # 所以应该先调用 mangum_handler(scope, receive, send) 得到协程，然后传递给 run_until_complete
+        # 调用 ASGI 应用
+        # 使用包装的 asgi_app 函数来确保正确的调用方式
         try:
-            # 创建协程对象
-            coro = mangum_handler(scope, receive, send)
-            # 运行协程
-            loop.run_until_complete(coro)
-        except TypeError as e:
-            # 如果参数数量错误，可能是 Mangum 版本问题
-            import traceback
-            error_details = traceback.format_exc()
-            print(f"[Mangum Error] 参数错误: {e}")
-            print(f"[Mangum Error] Mangum 类型: {type(mangum_handler)}")
-            print(f"[Mangum Error] Mangum 可调用: {callable(mangum_handler)}")
-            print(f"[Mangum Error] 尝试直接调用...")
-            print(f"[Mangum Error] 错误详情:\n{error_details}")
-            # 尝试直接调用（不使用 run_until_complete）
-            try:
-                # 如果 mangum_handler 返回协程，需要 await
-                import inspect
-                if inspect.iscoroutinefunction(mangum_handler):
-                    coro = mangum_handler(scope, receive, send)
-                    loop.run_until_complete(coro)
-                else:
-                    # 直接调用
-                    mangum_handler(scope, receive, send)
-            except Exception as e2:
-                print(f"[Mangum Error] 直接调用也失败: {e2}")
-                return Response(
-                    json.dumps({
-                        'error': 'Internal server error',
-                        'message': f'Mangum调用失败: {str(e)}',
-                        'type': type(e).__name__
-                    }),
-                    mimetype='application/json',
-                    status=500
-                )
+            # 直接调用 asgi_app 协程函数
+            loop.run_until_complete(asgi_app(scope, receive, send))
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
-            print(f"[Mangum Error] 调用失败: {e}")
-            print(f"[Mangum Error] 错误详情:\n{error_details}")
+            print(f"[ASGI Error] 调用失败: {e}")
+            print(f"[ASGI Error] 错误类型: {type(e).__name__}")
+            print(f"[ASGI Error] 错误详情:\n{error_details}")
             # 返回错误响应
             return Response(
                 json.dumps({
